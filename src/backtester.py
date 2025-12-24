@@ -9,7 +9,7 @@ def evaluate_strategy(
     sl: float,
     tp: float,
     holding_minutes: int,
-    commission: float = 0.0005,
+    commission: float = 0.001,
     slippage: float = 0.0002,
     filters_fn=None
 ):
@@ -45,7 +45,7 @@ def evaluate_strategy(
         exit_price = None
         exit_time = None
 
-        print(f"Entry at {entry.name}, price: {entry_price:.2f}, SL: {sl_price:.2f}, TP: {tp_price:.2f}")
+        # print(f"Entry at {entry.name}, price: {entry_price:.2f}, SL: {sl_price:.2f}, TP: {tp_price:.2f}")
         for idx in range(entry_idx + 1, len(ohlc)):
             row = ohlc.iloc[idx]
             current_time = row.name
@@ -70,7 +70,7 @@ def evaluate_strategy(
             exit_price = last_row["close"]
             exit_time = last_row.name
 
-        print(f"Exit at {current_time}, price: {exit_price:.2f}, percent: {(exit_price/entry_price - 1) * 100:.2f} %")
+        # print(f"Exit at {current_time}, price: {exit_price:.2f}, percent: {(exit_price/entry_price - 1) * 100:.2f} %")
         ret = (exit_price / entry_price) - 1
         ret -= commission * 2
 
