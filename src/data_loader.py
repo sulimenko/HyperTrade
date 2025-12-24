@@ -30,7 +30,6 @@ def load_ohlc(path: str) -> pd.DataFrame:
 
 
 def load_signals(path: str) -> pd.DataFrame:
-    return pd.read_csv(
-        path,
-        parse_dates=["signal_time"]
-    )
+    ts = pd.read_csv(path)
+    idx = pd.to_datetime(ts["time"], utc=True)
+    return pd.DataFrame(index=idx, data={"signal": 1})
