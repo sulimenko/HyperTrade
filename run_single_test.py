@@ -6,11 +6,14 @@ signals = load_signals("data/raw/TSLA_signals.csv")
 
 result = evaluate_strategy(
     ohlc=ohlc,
-    signals=signals.head(5),  # ТЕСТ: первые 5 сигналов
-    entry_delay=1,
-    sl_pct=0.02,
-    tp_pct=0.06,
-    max_holding=32
+    # signals=signals.head(5),  # ТЕСТ: первые 5 сигналов
+    signals=signals,
+    entry_delay=0,
+    sl=0.05,
+    tp=0.05,
+    holding_minutes=60*24*7,
+    commission=0.001,
+    slippage=0.0005,
 )
 
 print(result)
