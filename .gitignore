@@ -1,3 +1,5 @@
-/data/raw/*
+/data/market/*
+/data/signals/*
+/data/results/*
 __pycache__
 .DS_Store
