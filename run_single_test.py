@@ -23,8 +23,8 @@ if __name__ == "__main__":
         print(
             r["datetime"],
             r["symbols_count"],
-            round(r["avg_pnl"], 2),
-            round(r["total_pnl"], 2)
+            r["avg_pnl"]:.4f,
+            r["total_pnl"]:.4f
         )
 
 # ohlc = add_indicators(load_ohlc("data/raw/PLTR.csv"))

@@ -4,6 +4,9 @@ from loader.signals import load_signals
 from optimization.objective import objective
 from optimization.save import save_optimization_results
 
+# Отключаем стандартный логгер Optuna
+optuna.logging.disable_default_handler()
+
 SIGNALS_PATH = "data/signals/signals.csv"
 
 if __name__ == "__main__":
