@@ -4,5 +4,6 @@
 /data/market/*
 /data/signals/*
 /data/results/*
+/data/optuna/*
 __pycache__
 .DS_Store
