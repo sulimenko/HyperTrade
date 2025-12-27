@@ -1,6 +1,9 @@
-def StrategyParams(dalay_open=20, sl=3.0, tp=8.0):
+def StrategyParams(delay_open, sl, tp, holding_minutes, commission, slippage):
     return {
         "sl": sl,
         "tp": tp,
-        "dalay_open": dalay_open,
+        "delay_open": delay_open,
+        "holding_minutes": holding_minutes,
+        "commission": commission,
+        "slippage": slippage,
     }

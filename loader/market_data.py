@@ -14,6 +14,7 @@ def load_market_data(symbol: str, start) -> pd.DataFrame | None:
         ohlc = pd.read_csv(path, sep=";")
         if not ohlc.empty and 'timestamp' in ohlc.columns:
             if ohlc["timestamp"].iloc[0] <= int(start.timestamp() * 1000):
+                ohlc["datetime"] = pd.to_datetime(ohlc["timestamp"], unit="ms", utc=True)
                 _MARKET_CACHE[symbol] = ohlc
                 return ohlc
 
@@ -21,5 +22,6 @@ def load_market_data(symbol: str, start) -> pd.DataFrame | None:
     if ohlc is None:
         return None
     ohlc.to_csv(path, sep=";", index=False)
+    ohlc["datetime"] = pd.to_datetime(ohlc["timestamp"], unit="ms", utc=True)
     _MARKET_CACHE[symbol] = ohlc
     return ohlc
