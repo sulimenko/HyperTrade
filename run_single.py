@@ -16,8 +16,6 @@ def main(save=True):
     parser.add_argument("--tp", type=float, default=4.0)
     parser.add_argument("--delay_open", type=int, default=120)
     parser.add_argument("--holding_minutes", type=int, default=60*24*3)
-    parser.add_argument("--commission", type=float, default=0.01)
-    parser.add_argument("--slippage", type=float, default=0.0002)
 
     args = parser.parse_args()
 
