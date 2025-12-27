@@ -2,17 +2,24 @@ import os
 import pandas as pd
 from loader.api_client import fetch_market_data
 
-MIN_ROWS = 7000
+_MARKET_CACHE = {}
 
-def load_market_data(symbol: str):
+def load_market_data(symbol: str, start) -> pd.DataFrame | None:
+    if symbol in _MARKET_CACHE:
+        return _MARKET_CACHE[symbol]
+    
     path = f"data/market/{symbol}.csv"
 
     if os.path.exists(path):
-        df = pd.read_csv(path, sep=";")
-        if len(df) >= MIN_ROWS:
-            return df
+        ohlc = pd.read_csv(path, sep=";")
+        if not ohlc.empty and 'timestamp' in ohlc.columns:
+            if ohlc["timestamp"].iloc[0] <= int(start.timestamp() * 1000):
+                _MARKET_CACHE[symbol] = ohlc
+                return ohlc
 
-    # если данных нет или мало — POST
-    df = fetch_market_data(symbol)
-    df.to_csv(path, sep=";", index=False)
-    return df
+    ohlc = fetch_market_data(symbol)
+    if ohlc is None:
+        return None
+    ohlc.to_csv(path, sep=";", index=False)
+    _MARKET_CACHE[symbol] = ohlc
+    return ohlc

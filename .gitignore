@@ -1,3 +1,5 @@
+.vscode
+.conda
 /data/raw/*
 /data/market/*
 /data/signals/*

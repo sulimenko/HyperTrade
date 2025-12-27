@@ -1,6 +1,6 @@
-def StrategyParams(entry_lookback=20, sl=3.0, tp=8.0):
+def StrategyParams(dalay_open=20, sl=3.0, tp=8.0):
     return {
-        "entry_lookback": entry_lookback,
         "sl": sl,
-        "tp": tp
+        "tp": tp,
+        "dalay_open": dalay_open,
     }

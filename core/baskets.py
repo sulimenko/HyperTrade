@@ -8,7 +8,9 @@ def backtest(signals, params):
         pnls = []
 
         for symbol in signal["symbols"]:
-            ohlc = load_market_data(symbol)
+            ohlc = load_market_data(symbol, start=signal["datetime"])
+            if ohlc is None:
+                continue
 
             pnl = simulate_trade(
                 symbol=symbol,

@@ -1,5 +1,8 @@
 import pandas as pd
 
-def save_optimization_results(study):
-    df = study.trials_dataframe()
-    df.to_csv("data/results/optimization_results.csv", index=False)
+def save_walk_forward_results(results, path="data/results/walk_forward.csv"):
+    """
+    results: list[dict]
+    """
+    df = pd.DataFrame(results)
+    df.to_csv(path, index=False)
