@@ -23,13 +23,7 @@ def objective(trial, args):
     trades, _ = backtest(signals, params)
 
     metrics = compute_metrics(trades)
-
-    # score = metrics["expectancy"]
-    # score -= metrics.get("max_drawdown", 0) * args.dd_penalty
-    score = metrics.get("total_pnl", 0)
-
-    return score
-    # return objective
+    return metrics.get("total_pnl", 0)
 
 def run():
     parser = argparse.ArgumentParser()
