@@ -1,11 +1,14 @@
-import pandas as pd
-
 def default_filters(row) -> bool:
-    return (
+    if not (
         row["ema_fast"] > row["ema_slow"]
         and row["rsi"] > 50
-        and row["volume"] > row["volume_ma"]
-    )
+    ):
+        return False
+
+    if "volume" in row and "volume_ma" in row:
+        return row["volume"] > row["volume_ma"]
+
+    return True
 
 # def ema_trend_filter(entry_time, ohlc: pd.DataFrame, span: int = 50) -> bool:
 #     print("ENTRY:", entry_time, "EMA:", ema.loc[entry_time])

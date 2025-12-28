@@ -1,3 +1,5 @@
+dotenv
+argparse
 pandas
 numpy
 scipy
