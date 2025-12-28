@@ -2,9 +2,8 @@
 .conda
 /data/raw/*
 /data/market/*
-/data/signals/*
 /data/results/*
-/data/optuna/*
+/data/signals/*
 __pycache__
 .DS_Store
 .env
