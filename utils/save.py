@@ -1,10 +1,10 @@
-import os
+import json
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
 
-def save_walk_forward_results(results, path="data/results/walk_forward.csv"):
+def save_walk_forward_results(results, path="results/walk/walk_forward.csv"):
     """
     results: list[dict]
     """
@@ -13,7 +13,7 @@ def save_walk_forward_results(results, path="data/results/walk_forward.csv"):
     df.to_csv(path, index=False)
 
 
-def save_optimization_results(study, base_path="data/optuna"):
+def save_optimization_results(study, base_path="results/optuna"):
     ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
     path = Path(base_path) / ts
     path.mkdir(parents=True, exist_ok=True)
@@ -29,3 +29,16 @@ def save_optimization_results(study, base_path="data/optuna"):
             f.write(f"{k}: {v}\n")
 
     print(f"\nOptuna results saved to: {path}")
+
+def save_csv(df, path, name):
+    df.to_csv(path / name, index=False)
+
+def save_json(data, path, name):
+    with open(path / name, "w") as f:
+        json.dump(data, f, indent=2, default=str)
+
+def create_results_dir(base="results/single"):
+    ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
+    path = Path(base) / ts
+    path.mkdir(parents=True, exist_ok=True)
+    return path

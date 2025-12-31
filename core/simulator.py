@@ -1,12 +1,12 @@
 import pandas as pd
 from datetime import timedelta
-from config.market_time import compute_entry_time
+from core.market_time import compute_entry_time
 
 def simulate_trade(symbol, signal_time, params, ohlc: pd.DataFrame) -> object:
     try:
         entry_dt = compute_entry_time(
-            signal_time,
-            params["delay_open"]
+            signal_dt = signal_time,
+            delay_minutes = params["delay_open"]
         )
 
         chart = ohlc[ohlc["datetime"] >= entry_dt]

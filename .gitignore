@@ -1,8 +1,8 @@
 .vscode
 .conda
+/results/*
 /data/raw/*
 /data/market/*
-/data/results/*
 /data/signals/*
 __pycache__
 .DS_Store

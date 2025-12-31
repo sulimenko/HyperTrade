@@ -13,7 +13,8 @@ USA_MARKETS = {
     "NASDAQ",
     "NYSE",
     "AMEX",
-    "NYSE ARCA"
+    "NYSE ARCA",
+    "CBOE",
 }
 
 def search_symbol(symbol: str) -> Optional[dict]:
