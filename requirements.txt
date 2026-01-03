@@ -1,6 +1,7 @@
 dotenv
 argparse
 pandas
+numba
 numpy
 scipy
 matplotlib

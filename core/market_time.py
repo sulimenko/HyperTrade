@@ -6,9 +6,6 @@ def compute_entry_time(signal_dt: datetime, delay_minutes: int) -> datetime:
     eastern = pytz.timezone("US/Eastern")
     utc = pytz.UTC
 
-    if signal_dt.tzinfo is None:
-        signal_dt = utc.localize(signal_dt)
-
     signal_et = signal_dt.astimezone(eastern)
 
     # trade_date = signal_dt.date() + timedelta(days=1)

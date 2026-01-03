@@ -1,29 +1,29 @@
+import os
 import json
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
+RESULT_PATH = "results"
+os.makedirs(RESULT_PATH, exist_ok=True)
 
-def save_walk_forward_results(results, path="results/walk/walk_forward.csv"):
-    """
-    results: list[dict]
-    """
-    df = pd.DataFrame(results)
-    Path(path).parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(path, index=False)
-
-
-def save_optimization_results(study, base_path="results/optuna"):
+def _result_file(type="optuna") -> str:
     ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    path = Path(base_path) / ts
-    path.mkdir(parents=True, exist_ok=True)
+    return f"{RESULT_PATH}/{type}/{ts}.csv"
 
-    # все трейлы
-    df = study.trials_dataframe(attrs=("number", "value", "params", "state"))
-    df = df[df["state"] == "COMPLETE"]
+def save_optimization_results(study):
+    path = _result_file("optuna")
+
+    df = study.trials_dataframe()
     df.to_csv(path / "trials.csv", index=False)
 
-    with open(f"{path}/best.txt", "w") as f:
+    df_sorted = df.sort_values("value", ascending=False)
+    top = df_sorted.head(max(1, int(len(df) * 0.1)))
+    top.to_csv(path / "top_trials.csv", index=False)
+
+    print(f"Saved Optuna results to {path}")
+
+    with open(path / "best.txt", "w") as f:
         f.write(f"Best value: {study.best_value}\n")
         for k, v in study.best_params.items():
             f.write(f"{k}: {v}\n")
@@ -36,9 +36,3 @@ def save_csv(df, path, name):
 def save_json(data, path, name):
     with open(path / name, "w") as f:
         json.dump(data, f, indent=2, default=str)
-
-def create_results_dir(base="results/single"):
-    ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    path = Path(base) / ts
-    path.mkdir(parents=True, exist_ok=True)
-    return path

@@ -1,6 +1,5 @@
-from loader.market_data import load_market_data
-# from loader.indicators import add_indicators
-# from core.filters import default_filters
+# from loader.market_data import load_market_data
+from loader.ensure_data import ensure_market_data
 from core.simulator import simulate_trade
 
 def backtest(signals, params):
@@ -12,15 +11,11 @@ def backtest(signals, params):
         rejected = []
 
         for symbol in signal["symbols"]:
-            # ohlc = add_indicators(
-            ohlc = load_market_data(symbol, start=signal["datetime"])
-            # )
+            # ohlc = load_market_data(symbol, start=signal["datetime"])
+            ohlc = ensure_market_data(symbol, start=signal["datetime"], indicator_config=params.indicator_config)
             if ohlc is None:
                 rejected.append((symbol, "no_market_data"))
                 continue
-
-            # if not default_filters(ohlc.iloc[0]):
-                # continue
 
             trade = simulate_trade(
                 symbol=symbol,

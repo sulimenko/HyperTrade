@@ -1,19 +1,21 @@
 class EarlyStopper:
-    def __init__(self, patience=40, min_delta=0.01, warmup=30):
+    def __init__(self, patience: int = 50, warmup: int = 30):
         self.patience = patience
-        self.min_delta = min_delta
         self.warmup = warmup
         self.best = None
         self.counter = 0
 
     def __call__(self, study, trial):
-        # не останавливаемся слишком рано
-        if trial.number < self.warmup:
+        if len(study.trials) < self.warmup:
             return
 
-        current_best = study.best_value
+        # берем первую цель (return)
+        current_best = max(
+            t.values[0] for t in study.best_trials
+            if t.values is not None
+        )
 
-        if self.best is None or current_best > self.best + self.min_delta:
+        if self.best is None or current_best > self.best:
             self.best = current_best
             self.counter = 0
         else:

@@ -10,41 +10,42 @@ warnings.filterwarnings(
 from loader.signals import load_signals
 from core.baskets import backtest
 from core.metrics import compute_metrics
-from config.params import StrategyParams
+from config.params import StrategyParams, build_strategy_params
 from utils.save import save_optimization_results
 from core.early_stopping import EarlyStopper
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
-# def make_objective(args):
 def objective(trial, args):
-    params = StrategyParams(
-        signals=args.signals,
-        sl=trial.suggest_float("sl", args.sl_min, args.sl_max, step=args.sl_step),
-        tp=trial.suggest_float("tp", args.tp_min, args.tp_max, step=args.tp_step),
-        delay_open=trial.suggest_int("delay_open", args.delay_open_min, args.delay_open_max, step=args.delay_open_step),
-        holding_minutes=trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step),
-    )
+    params = build_strategy_params(trial, args)
 
     signals = load_signals(args.signals)
     trades, _ = backtest(signals, params)
 
-    metrics = compute_metrics(trades)
-    return metrics.get("total_pnl", 0)
+    if not trades:
+        return -1e9, 1e9
 
-def objective_narrow(trial, best_params):
-    params = StrategyParams(
-        sl=trial.suggest_float("sl", max(0.1, best_params["sl"] - 0.5), best_params["sl"] + 0.5, step=0.1),
-        tp=trial.suggest_float("tp", max(0.5, best_params["tp"] - 1.0), best_params["tp"] + 1.0, step=0.2),
-        delay_open=trial.suggest_int("delay_open", max(0, best_params["delay_open"] - 30), best_params["delay_open"] + 30, step=5),
-        holding_minutes=best_params["holding_minutes"],
-    )
-
-    signals = load_signals(SIGNALS_PATH)
-    trades, _ = backtest(signals, params)
     metrics = compute_metrics(trades)
 
-    return metrics.get("total_pnl", 0)
+    return float(metrics.get("total_pnl", 0.0))
+    # return {
+    #     float(metrics.get("total_pnl", 0.0)),
+    #     float(metrics.get("max_drawdown", 0.0)),
+    # }
+
+# def objective_narrow(trial, best_params):
+#     params = StrategyParams(
+#         sl=trial.suggest_float("sl", max(0.1, best_params["sl"] - 0.5), best_params["sl"] + 0.5, step=0.1),
+#         tp=trial.suggest_float("tp", max(0.5, best_params["tp"] - 1.0), best_params["tp"] + 1.0, step=0.2),
+#         delay_open=trial.suggest_int("delay_open", max(0, best_params["delay_open"] - 30), best_params["delay_open"] + 30, step=5),
+#         holding_minutes=best_params["holding_minutes"],
+#     )
+
+#     signals = load_signals(SIGNALS_PATH)
+#     trades, _ = backtest(signals, params)
+#     metrics = compute_metrics(trades)
+
+#     return metrics.get("total_pnl", 0)
 
 def run():
     parser = argparse.ArgumentParser()
@@ -75,11 +76,12 @@ def run():
     # optuna.logging.disable_default_handler()
 
     sampler = optuna.samplers.TPESampler(
-       n_startup_trials=30,   # минимум случайных
+        n_startup_trials=30,   # минимум случайных
         multivariate=True,     # учитывает связи параметров
         group=True,            # группирует параметры
         consider_prior=True,
         consider_magic_clip=True,
+        constant_liar=True,
         seed=42
     )
 
@@ -94,34 +96,34 @@ def run():
     save_optimization_results(study)
 
     print("\n=== BEST PARAMS ===")
-    for k, v in study.best_params.items():
+    for k, v in study.best_trials.items():
         print(f"{k:25}: {v}")
     
     print("Score:", study.best_value)
 
-    best_params = study.best_params
+    # best_params = study.best_params
 
-    narrow_study = optuna.create_study(
-        direction="maximize",
-        sampler=optuna.samplers.TPESampler(
-            n_startup_trials=10,
-            multivariate=True,
-            seed=1337,
-        ),
-    )
+    # narrow_study = optuna.create_study(
+    #     direction="maximize",
+    #     sampler=optuna.samplers.TPESampler(
+    #         n_startup_trials=10,
+    #         multivariate=True,
+    #         seed=1337,
+    #     ),
+    # )
 
-    narrow_study.optimize(
-        lambda t: objective_narrow(t, best_params),
-        callbacks=[EarlyStopper(patience=30, warmup=10)],
-        n_trials=150,
-    )
+    # narrow_study.optimize(
+    #     lambda t: objective_narrow(t, best_params),
+    #     callbacks=[EarlyStopper(patience=30, warmup=10)],
+    #     n_trials=150,
+    # )
 
-    print("\n=== FINAL BEST (NARROW) ===")
-    for k, v in narrow_study.best_params.items():
-        print(f"{k:25}: {v}")
-    print("Final score:", narrow_study.best_value)
+    # print("\n=== FINAL BEST (NARROW) ===")
+    # for k, v in narrow_study.best_params.items():
+    #     print(f"{k:25}: {v}")
+    # print("Final score:", narrow_study.best_value)
 
-    save_optimization_results(narrow_study)
+    # save_optimization_results(narrow_study)
 
 
 if __name__ == "__main__":

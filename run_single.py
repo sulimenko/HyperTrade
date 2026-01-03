@@ -5,7 +5,7 @@ from loader.signals import load_signals
 from core.baskets import backtest
 from core.metrics import compute_metrics
 from config.params import StrategyParams
-from utils.save import create_results_dir, save_csv, save_json
+from utils.save import create_dir, save_csv, save_json
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
@@ -28,7 +28,7 @@ def main(save=True):
     metrics = compute_metrics(trades)
 
     if save:
-        results_dir = create_results_dir()
+        results_dir = create_dir()
         save_csv(pd.DataFrame(trades), results_dir, "trades.csv")
         save_csv(pd.DataFrame(signal_stats), results_dir, "signals.csv")
         save_json(params, results_dir, "params.json")

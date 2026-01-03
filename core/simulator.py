@@ -1,8 +1,110 @@
 import pandas as pd
-from datetime import timedelta
-from core.market_time import compute_entry_time
 
-def simulate_trade(symbol, signal_time, params, ohlc: pd.DataFrame) -> object:
+from datetime import timedelta
+import numba as nb
+import numpy as np
+from core.market_time import compute_entry_time
+from core.filters import default_filters
+
+
+@nb.njit
+def simulate_trade_core(
+    open,
+    high,
+    low,
+    close,
+    entry_idx,
+    sl_pct,
+    tp_pct,
+    max_bars
+):
+    entry_price = open[entry_idx]
+
+    sl_price = entry_price * (1.0 - sl_pct / 100.0)
+    tp_price = entry_price * (1.0 + tp_pct / 100.0)
+
+    for i in range(entry_idx + 1, min(entry_idx + max_bars, len(close))):
+        if low[i] <= sl_price:
+            return sl_price, i, "sl"   # SL
+
+        if high[i] >= tp_price:
+            return tp_price, i, "tp"   # TP
+
+    exit_idx = min(entry_idx + max_bars, len(close) - 1)
+    return open[exit_idx], exit_idx, "time_exit"
+
+def simulate_trade(symbol, signal_time, params, ohlc):
+    entry = {}
+    try:
+        entry["datetime"] = compute_entry_time(
+            signal_time,
+            params.delay_open
+        )
+
+        mask = ohlc["datetime"] >= entry["datetime"]
+        if not mask.any():
+            return {
+                "symbol": symbol,
+                "rejected": True,
+                "reject_reason": "no_candles_after_entry"
+            }
+
+        entry["idx"] = mask.idxmax()
+
+        if not default_filters(ohlc.iloc[entry["idx"]], params):
+            return {
+                "symbol": symbol,
+                "rejected": True,
+                "reject_reason": "indicators_filter_failed"
+            }
+
+        max_bars = params.holding_minutes // params.bar_minutes
+
+        exit_price, exit_idx, exit_reason = simulate_trade_core(
+            ohlc["open"].values,
+            ohlc["high"].values,
+            ohlc["low"].values,
+            ohlc["close"].values,
+            entry["idx"],
+            params.sl,
+            params.tp,
+            max_bars
+        )
+
+        entry["price"] = ohlc.iloc[entry["idx"]]["open"]
+        exit_datetime = ohlc.iloc[exit_idx]["datetime"]
+
+        entry["price"] *= (1 + params.slippage)
+        exit_price  *= (1 - params.slippage)
+
+        commission = params.commission * 2
+
+        pnl = (exit_price - entry["price"]) - commission
+        return_pct = pnl / entry["price"] * 100
+
+        return {
+            "symbol": symbol,
+            "entry_dt": entry["datetime"],
+            "exit_dt": exit_datetime,
+            "entry_price": entry["price"],
+            "exit_price": exit_price,
+            "pnl": pnl,
+            "return_pct": return_pct,
+            "is_win": pnl > 0,
+            "exit_reason": exit_reason,
+            "rejected": False
+        }
+
+    except Exception as e:
+        return {
+            "symbol": symbol,
+            "rejected": True,
+            "reject_reason": str(e)
+        }
+
+
+
+def simulate_trade_old(symbol, signal_time, params, ohlc: pd.DataFrame) -> object:
     try:
         entry_dt = compute_entry_time(
             signal_dt = signal_time,

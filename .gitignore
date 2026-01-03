@@ -3,6 +3,7 @@
 /results/*
 /data/raw/*
 /data/market/*
+/data/indicators/*
 /data/signals/*
 __pycache__
 .DS_Store
