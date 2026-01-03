@@ -40,19 +40,22 @@ def build_strategy_params(trial, args) -> StrategyParams:
     # ===== EMA =====
     ema_enabled = trial.suggest_categorical("ema_enabled", [True, False])
     if ema_enabled:
-        ema_fast = trial.suggest_int("ema_fast", 10, 30)
-        ema_slow = trial.suggest_int("ema_slow", 40, 80)
-        indicator_config["ema"] = [True, ema_fast, ema_slow]
+        ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
+        ema_slow = trial.suggest_int("ema_slow", 40, 80, step=5)
+        ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
+        indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
     else:
         indicator_config["ema"] = [False, None, None]
 
     # ===== RSI =====
-    # rsi_enabled = trial.suggest_categorical("rsi_enabled", [True, False])
-    # if rsi_enabled:
-    #     rsi_period = trial.suggest_int("rsi_period", 10, 21)
-    #     indicator_config["rsi"] = [True, rsi_period]
-    # else:
-    #     indicator_config["rsi"] = [False, None]
+    rsi_enabled = trial.suggest_categorical("rsi_enabled", [True, False])
+    if rsi_enabled:
+        rsi_period = trial.suggest_int("rsi_period", 12, 21, step=3)
+        rsi_level = trial.suggest_int("rsi_level", 20, 80, step=10)
+        rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])
+        indicator_config["rsi"] = [True, rsi_sign, rsi_level, rsi_period]
+    else:
+        indicator_config["rsi"] = [False, None, None, None]
 
     # ===== VOLUME =====
     # volume_enabled = trial.suggest_categorical("volume_enabled", [True, False])

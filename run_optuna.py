@@ -93,13 +93,23 @@ def run():
         n_trials=args.n_trials
     )
 
-    save_optimization_results(study)
+    try:
+        save_optimization_results(study)
+    except Exception as e:
+        print("⚠️ Failed to save Optuna results:", e)
 
-    print("\n=== BEST PARAMS ===")
-    for k, v in study.best_trials.items():
-        print(f"{k:25}: {v}")
-    
-    print("Score:", study.best_value)
+    if len(study.directions) == 1:
+        print("\n=== BEST PARAMS ===")
+        for k, v in study.best_trial.params.items():
+            print(f"{k:25}: {v}")
+        print("Score:", study.best_value)
+    else:
+        print("\n=== PARETO FRONT ===")
+        for i, t in enumerate(study.best_trials):
+            print(f"\n--- Trial {i} ---")
+            print("Values:", t.values)
+            for k, v in t.params.items():
+                print(f"{k:25}: {v}")
 
     # best_params = study.best_params
 

@@ -4,7 +4,7 @@ from datetime import timedelta
 import numba as nb
 import numpy as np
 from core.market_time import compute_entry_time
-from core.filters import default_filters
+from core.filters import filters
 
 
 @nb.njit
@@ -51,7 +51,7 @@ def simulate_trade(symbol, signal_time, params, ohlc):
 
         entry["idx"] = mask.idxmax()
 
-        if not default_filters(ohlc.iloc[entry["idx"]], params):
+        if not filters(ohlc.iloc[entry["idx"]], params):
             return {
                 "symbol": symbol,
                 "rejected": True,

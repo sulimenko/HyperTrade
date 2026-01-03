@@ -8,13 +8,13 @@ def calculate_indicators(df: pd.DataFrame, indicator_config: dict) -> pd.DataFra
     # ===== EMA =====
     ema_cfg = indicator_config.get("ema")
     if ema_cfg and ema_cfg[0]:
-        _, fast, slow = ema_cfg
+        _, _, fast, slow = ema_cfg
         indicators[f"ema_{fast}_{slow}"] = df["close"].ewm(span=fast, adjust=False).mean() - df["close"].ewm(span=slow, adjust=False).mean()
 
     # ===== RSI =====
     rsi_cfg = indicator_config.get("rsi")
     if rsi_cfg and rsi_cfg[0]:
-        _, period = rsi_cfg
+        _, _, _, period = rsi_cfg
         indicators[f"rsi_{period}"] = ta.momentum.RSIIndicator(df["close"], period).rsi()
 
     # # ===== VOLUME =====
