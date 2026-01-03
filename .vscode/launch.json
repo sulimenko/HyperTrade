@@ -1,0 +1,44 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    { 
+      "name": "Run convert",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/convert.py",
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    { 
+      "name": "Run Single HyperTrade",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_single.py",
+      "args": ["--signals=data/signals/PF20250597.csv","--sl=15.0", "--tp=18.5", "--delay_open=0", "--holding_minutes=660"],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    },
+    { 
+      "name": "Run Optuna HyperTrade",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_optuna.py",
+      "args": [
+        "--signals=data/signals/PF20250597.csv",
+        "--sl_min=3.0",
+        "--sl_max=15.0",
+        "--tp_min=4.0",
+        "--tp_max=20.0",
+        "--delay_open_min=0",
+        "--delay_open_max=60",
+        "--delay_open_step=15",
+        "--holding_minutes_min=300",
+        "--holding_minutes_max=2880",
+        "--holding_minutes_step=60",
+        "--n_trials=300"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
+    }
+  ]
+}

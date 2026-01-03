@@ -1,19 +1,17 @@
 import pandas as pd
 from loader.market_loader import ensure_market_history
 from loader.indicator_calc import calculate_indicators
-from loader.indicator_store import load_indicator_csv, save_indicator_csv
+from loader.indicator_store import load_indicator, save_indicator
 
 def ensure_market_data(symbol, start, indicator_config) -> pd.DataFrame | None:
     market_df = ensure_market_history(symbol, start)
     if market_df is None or market_df.empty:
         return None
-
-    market_df["datetime"] = pd.to_datetime(market_df["datetime"], utc=True)
     
-    ind_df = load_indicator_csv(symbol)
+    ind_df = load_indicator(symbol)
     if ind_df is None or ind_df.empty:
         ind_df = calculate_indicators(market_df, indicator_config)
-        save_indicator_csv(symbol, ind_df)
+        save_indicator(symbol, ind_df)
         return market_df.merge(ind_df, on="datetime", how="left")
 
     sample_ind = calculate_indicators(market_df.iloc[:1], indicator_config)
@@ -27,7 +25,7 @@ def ensure_market_data(symbol, start, indicator_config) -> pd.DataFrame | None:
         new_ind = full_ind[["datetime"] + missing_cols]
 
         ind_df = ind_df.merge(new_ind, on="datetime", how="left")
-        save_indicator_csv(symbol, ind_df)
+        save_indicator(symbol, ind_df)
 
     return market_df.merge(ind_df, on="datetime", how="left")
 

@@ -61,8 +61,9 @@ def fetch_candles(instrument: dict) -> pd.DataFrame:
         raise ValueError(
             f"Invalid OHLC format, got columns: {ohlc.columns}"
         )
-
-    return ohlc
+    ohlc["datetime"] = pd.to_datetime(ohlc["timestamp"], unit="ms", utc=True)
+    cols = ['datetime'] + [col for col in ohlc.columns if col != 'timestamp' and col != 'datetime']
+    return ohlc[cols]
 
 def fetch_market_data(symbol: str) -> pd.DataFrame:
     instrument = search_symbol(symbol)

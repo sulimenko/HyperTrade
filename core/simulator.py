@@ -6,92 +6,177 @@ import numpy as np
 from core.market_time import compute_entry_time
 from core.filters import filters
 
+# =====================
+# Constants / Enums
+# =====================
+
+EXIT_REASON = {0: "sl", 1: "tp", 2: "time_exit"}
+
+DT    = 0
+OPEN  = 1
+HIGH  = 2
+LOW   = 3
+CLOSE = 4
+
+LONG  = 1
+SHORT = -1
 
 @nb.njit
 def simulate_trade_core(
-    open,
-    high,
-    low,
-    close,
+    ohlc,
     entry_idx,
+    entry_ts,
+    holding_ns,
+    direction,
     sl_pct,
     tp_pct,
-    max_bars
+    slippage,
+    commission
 ):
-    entry_price = open[entry_idx]
+    entry_price = ohlc[entry_idx, OPEN] * (1.0 + slippage * direction)
 
-    sl_price = entry_price * (1.0 - sl_pct / 100.0)
-    tp_price = entry_price * (1.0 + tp_pct / 100.0)
+    if direction == LONG:
+        sl_price = entry_price * (1.0 - sl_pct / 100.0)
+        tp_price = entry_price * (1.0 + tp_pct / 100.0)
+    else:
+        sl_price = entry_price * (1.0 + sl_pct / 100.0)
+        tp_price = entry_price * (1.0 - tp_pct / 100.0)
 
-    for i in range(entry_idx + 1, min(entry_idx + max_bars, len(close))):
-        if low[i] <= sl_price:
-            return sl_price, i, "sl"   # SL
+    exit_deadline = entry_ts + holding_ns
 
-        if high[i] >= tp_price:
-            return tp_price, i, "tp"   # TP
+    exit_price = entry_price
+    exit_idx = entry_idx
+    reason = 2
 
-    exit_idx = min(entry_idx + max_bars, len(close) - 1)
-    return open[exit_idx], exit_idx, "time_exit"
+    for i in range(entry_idx + 1, ohlc.shape[0]):
+        ts = ohlc[i, DT]
+        o  = ohlc[i, OPEN]
+        h  = ohlc[i, HIGH]
+        l  = ohlc[i, LOW]
+        c  = ohlc[i, CLOSE]
+
+        # ---------- TIME EXIT ----------
+        if ts > exit_deadline:
+            exit_price = o
+            exit_idx = i
+            reason = 2
+            break
+
+        # ---------- DIRECTIONAL CANDLE MODEL ----------
+        bullish = c >= o
+
+        if direction == LONG:
+            if bullish:
+                # open → low → high
+                if l <= sl_price:
+                    exit_price = min(sl_price, o)
+                    exit_idx = i
+                    reason = 0
+                    break
+                if h >= tp_price:
+                    exit_price = max(tp_price, o)
+                    exit_idx = i
+                    reason = 1
+                    break
+            else:
+                # open → high → low
+                if h >= tp_price:
+                    exit_price = max(tp_price, o)
+                    exit_idx = i
+                    reason = 1
+                    break
+                if l <= sl_price:
+                    exit_price = min(sl_price, o)
+                    exit_idx = i
+                    reason = 0
+                    break
+
+        else:  # ---------- SHORT ----------
+            if bullish:
+                # open → low → high
+                if l <= tp_price:
+                    exit_price = min(tp_price, o)
+                    exit_idx = i
+                    reason = 1
+                    break
+                if h >= sl_price:
+                    exit_price = max(sl_price, o)
+                    exit_idx = i
+                    reason = 0
+                    break
+            else:
+                # open → high → low
+                if h >= sl_price:
+                    exit_price = max(sl_price, o)
+                    exit_idx = i
+                    reason = 0
+                    break
+                if l <= tp_price:
+                    exit_price = min(tp_price, o)
+                    exit_idx = i
+                    reason = 1
+                    break
+
+    # ---------- APPLY SLIPPAGE + COMMISSION ----------
+    exit_price = exit_price * (1.0 - slippage * direction)
+
+    pnl = (exit_price - entry_price) * direction
+    pnl -= commission * 2
+
+    return pnl, exit_price, exit_idx, reason
 
 def simulate_trade(symbol, signal_time, params, ohlc):
-    entry = {}
     try:
-        entry["datetime"] = compute_entry_time(
-            signal_time,
-            params.delay_open
-        )
+        entry_dt = compute_entry_time(signal_time,params.delay_open)
+        entry_idx = ohlc["datetime"].searchsorted(entry_dt)
 
-        mask = ohlc["datetime"] >= entry["datetime"]
-        if not mask.any():
-            return {
-                "symbol": symbol,
-                "rejected": True,
-                "reject_reason": "no_candles_after_entry"
-            }
-
-        entry["idx"] = mask.idxmax()
-
-        if not filters(ohlc.iloc[entry["idx"]], params):
+        if not filters(ohlc.iloc[entry_idx], params):
             return {
                 "symbol": symbol,
                 "rejected": True,
                 "reject_reason": "indicators_filter_failed"
             }
 
-        max_bars = params.holding_minutes // params.bar_minutes
+        direction = LONG  # currently only LONG trades are supported
 
-        exit_price, exit_idx, exit_reason = simulate_trade_core(
+        ohlc_np = np.column_stack([
+            ohlc["datetime"].values.astype("datetime64[ns]").astype(np.int64),
             ohlc["open"].values,
             ohlc["high"].values,
             ohlc["low"].values,
             ohlc["close"].values,
-            entry["idx"],
+        ]).astype(np.float64)
+
+        entry_ts = np.int64(entry_dt.value)
+        holding_ns = np.int64(params.holding_minutes * 60 * 1e9)
+        
+        pnl, exit_price, exit_idx, reason = simulate_trade_core(
+            ohlc_np,
+            entry_idx,
+            entry_ts,
+            holding_ns,
+            direction,
             params.sl,
             params.tp,
-            max_bars
+            params.slippage,
+            params.commission
         )
 
-        entry["price"] = ohlc.iloc[entry["idx"]]["open"]
-        exit_datetime = ohlc.iloc[exit_idx]["datetime"]
+        exit_dt = ohlc.iloc[exit_idx]["datetime"]
+        entry_price = ohlc_np[entry_idx, OPEN]
 
-        entry["price"] *= (1 + params.slippage)
-        exit_price  *= (1 - params.slippage)
-
-        commission = params.commission * 2
-
-        pnl = (exit_price - entry["price"]) - commission
-        return_pct = pnl / entry["price"] * 100
+        return_pct = pnl / entry_price * 100
 
         return {
             "symbol": symbol,
-            "entry_dt": entry["datetime"],
-            "exit_dt": exit_datetime,
-            "entry_price": entry["price"],
+            "entry_dt": entry_dt,
+            "exit_dt": exit_dt,
+            "entry_price": entry_price,
             "exit_price": exit_price,
             "pnl": pnl,
             "return_pct": return_pct,
             "is_win": pnl > 0,
-            "exit_reason": exit_reason,
+            "exit_reason": EXIT_REASON[reason],
             "rejected": False
         }
 

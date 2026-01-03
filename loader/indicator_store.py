@@ -1,27 +1,24 @@
-import os
+from functools import lru_cache
+from pathlib import Path
 import pandas as pd
 
-INDICATOR_PATH = "data/indicators"
-os.makedirs(INDICATOR_PATH, exist_ok=True)
+INDICATOR_PATH = Path("data/indicators")
+INDICATOR_PATH.mkdir(parents=True, exist_ok=True)
 
-def _indicator_file(symbol: str) -> str:
-    return f"{INDICATOR_PATH}/{symbol}.csv"
+def _indicator_file(symbol: str) -> Path:
+    return INDICATOR_PATH / f"{symbol}.parquet"
 
-def load_indicator_csv(symbol: str) -> pd.DataFrame | None:
+@lru_cache(maxsize=512)
+def load_indicator(symbol: str) -> pd.DataFrame | None:
     path = _indicator_file(symbol)
-    if not os.path.exists(path):
+    if not path.exists():
         return None
-    df = pd.read_csv(path, sep=";")
-    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True, errors="coerce")
-    df = df.dropna(subset=["datetime"])
+    df = pd.read_parquet(path, engine="pyarrow")
     return df
 
-def save_indicator_csv(symbol: str, df: pd.DataFrame):
+def save_indicator(symbol: str, df: pd.DataFrame):
     path = _indicator_file(symbol)
-    
-    out = df.copy()
-    out["timestamp"] = (pd.to_datetime(df["datetime"], utc=True).astype("int64") // 10**6)
-    # out["timestamp"] = (pd.to_datetime(out["datetime"]).astype("int64") // 10**6).astype("int64")
-
-    out = out.drop(columns=["datetime"])
-    out.to_csv(path, sep=";", index=False)
+    df.sort_values("datetime", inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    cols = ['datetime'] + [col for col in df.columns if col != 'timestamp' and col != 'datetime']
+    df[cols].to_parquet(path, engine="pyarrow", compression="zstd")

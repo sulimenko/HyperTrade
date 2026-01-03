@@ -26,7 +26,7 @@ class StrategyParams:
     # --- execution ---
     commission: float = 0.002
     slippage: float = 0.0002
-    bar_minutes: int = 1
+    bar_minutes: int = 15
 
     def __post_init__(self):
         for k, v in DEFAULT_INDICATOR_CONFIG.items():
@@ -79,7 +79,7 @@ def build_optuna_params(trial, args) -> StrategyParams:
         indicator_config=indicator_config,
         commission=getattr(args, "commission", 0.002),
         slippage=getattr(args, "slippage", 0.0002),
-        bar_minutes=getattr(args, "bar_minutes", 1),
+        bar_minutes=getattr(args, "bar_minutes", 15),
     )
 
 def build_single_params(args) -> StrategyParams:
@@ -111,5 +111,5 @@ def build_single_params(args) -> StrategyParams:
         indicator_config=indicator_config,
         commission=getattr(args, "commission", 0.002),
         slippage=getattr(args, "slippage", 0.0002),
-        bar_minutes=getattr(args, "bar_minutes", 1),
+        bar_minutes=getattr(args, "bar_minutes", 15),
     )

@@ -1,25 +1,27 @@
-import os
+from pathlib import Path
+from functools import lru_cache
 import pandas as pd
 from loader.api_client import fetch_market_data
 
-MARKET_PATH = "data/market"
-os.makedirs(MARKET_PATH, exist_ok=True)
+MARKET_PATH = Path("data/ohlc")
+MARKET_PATH.mkdir(parents=True, exist_ok=True)
 
-def load_market_csv(symbol: str) -> pd.DataFrame | None:
-    path = f"{MARKET_PATH}/{symbol}.csv"
-    if not os.path.exists(path):
+@lru_cache(maxsize=512)
+def load_market(symbol: str) -> pd.DataFrame | None:
+    path = MARKET_PATH / f"{symbol}.parquet"
+    if not path.exists():
         return None
-    df = pd.read_csv(path, sep=";")
-    df["datetime"] = pd.to_datetime(df["timestamp"], unit="ms", utc=True)
-    return df
+    return pd.read_parquet(path, engine="pyarrow")
 
-def save_market_csv(symbol: str, df: pd.DataFrame):
-    path = f"{MARKET_PATH}/{symbol}.csv"
-    df.to_csv(path, sep=";", index=False)
+def save_market(symbol: str, df: pd.DataFrame):
+    path = MARKET_PATH / f"{symbol}.parquet"
+    df.sort_values("datetime", inplace=True)
+    df.reset_index(drop=True, inplace=True)
+    df.to_parquet(path, engine="pyarrow", compression="zstd")
 
-def ensure_market_history(symbol: str, start) -> pd.DataFrame | None:
-    df = load_market_csv(symbol)
-    if df is not None:
+def ensure_market_history(symbol: str, start, api=True) -> pd.DataFrame | None:
+    df = load_market(symbol)
+    if df is not None or not api:
         if df["datetime"].min() <= start:
             return df
 
@@ -28,13 +30,5 @@ def ensure_market_history(symbol: str, start) -> pd.DataFrame | None:
     if api_df is None:
         return None
 
-    api_df["datetime"] = pd.to_datetime(api_df["timestamp"], unit="ms", utc=True)
-
-    if df is not None:
-        df = pd.concat([api_df, df]).drop_duplicates("timestamp")
-    else:
-        df = api_df
-
-    df = df.sort_values("timestamp")
-    save_market_csv(symbol, df)
-    return df
+    save_market(symbol, api_df)
+    return ensure_market_history(symbol, start, api=False)
