@@ -10,14 +10,14 @@ warnings.filterwarnings(
 from loader.signals import load_signals
 from core.baskets import backtest
 from core.metrics import compute_metrics
-from config.params import StrategyParams, build_strategy_params
+from config.params import build_optuna_params
 from utils.save import save_optimization_results
 from core.early_stopping import EarlyStopper
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
 def objective(trial, args):
-    params = build_strategy_params(trial, args)
+    params = build_optuna_params(trial, args)
 
     signals = load_signals(args.signals)
     trades, _ = backtest(signals, params)

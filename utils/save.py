@@ -34,9 +34,10 @@ def save_optimization_results(study):
 
     print(f"\n✅ Optuna results saved to: {path}")
 
-def save_csv(df, path, name):
+def save_csv(df, name):
+    path = _result_file("single")
     df.to_csv(path / name, index=False)
 
-def save_json(data, path, name):
-    with open(path / name, "w") as f:
-        json.dump(data, f, indent=2, default=str)
+# def save_json(data, path, name):
+#     with open(path / name, "w") as f:
+#         json.dump(data, f, indent=2, default=str)

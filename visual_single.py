@@ -1,9 +1,3 @@
-# import os
-# os.environ["MPLCONFIGDIR"] = "/tmp/matplotlib"
-
-# import matplotlib
-# matplotlib.use("Agg")
-
 import sys
 import matplotlib.pyplot as plt
 import pandas as pd
@@ -41,9 +35,3 @@ plt.ylabel("Cumulative PnL")
 plt.grid(True)
 plt.tight_layout()
 plt.show()
-
-# out_file = path / "equity_curve.png"
-# plt.savefig(out_file, dpi=150)
-# plt.close()
-
-# print(f"Saved equity curve to {out_file}")

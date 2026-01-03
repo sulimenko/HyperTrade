@@ -34,7 +34,7 @@ class StrategyParams:
                 self.indicator_config[k] = v.copy()
 
 
-def build_strategy_params(trial, args) -> StrategyParams:
+def build_optuna_params(trial, args) -> StrategyParams:
     indicator_config = {}
 
     # ===== EMA =====
@@ -45,7 +45,7 @@ def build_strategy_params(trial, args) -> StrategyParams:
         ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
         indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
     else:
-        indicator_config["ema"] = [False, None, None]
+        indicator_config["ema"] = [False, None, None, None]
 
     # ===== RSI =====
     rsi_enabled = trial.suggest_categorical("rsi_enabled", [True, False])
@@ -82,15 +82,34 @@ def build_strategy_params(trial, args) -> StrategyParams:
         bar_minutes=getattr(args, "bar_minutes", 1),
     )
 
+def build_single_params(args) -> StrategyParams:
+    indicator_config = {}
+    # ===== EMA =====
+    ema_enabled = args.ema_enabled
+    if ema_enabled:
+        ema_fast = args.ema_fast
+        ema_slow = args.ema_slow
+        ema_sign = args.ema_sign
+        indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
+    else:
+        indicator_config["ema"] = [False, None, None]
 
-
-# def StrategyParams(sl, tp, delay_open, holding_minutes, indicator_config = {}, commission = 0.02, slippage = 0.0002):
-#     return {
-#         "sl": sl,
-#         "tp": tp,
-#         "delay_open": delay_open,
-#         "holding_minutes": holding_minutes,
-#         "indicator_config": indicator_config,
-#         "commission": commission,
-#         "slippage": slippage,
-#     }
+    # ===== RSI =====
+    rsi_enabled = args.rsi_enabled
+    if rsi_enabled:
+        rsi_period = args.rsi_period
+        rsi_level = args.rsi_level
+        rsi_sign = args.rsi_sign
+        indicator_config["rsi"] = [True, rsi_sign, rsi_level, rsi_period]
+    else:
+        indicator_config["rsi"] = [False, None, None, None]
+    return StrategyParams(
+        sl=args.sl,
+        tp=args.tp,
+        delay_open=args.delay_open,
+        holding_minutes=args.holding_minutes,
+        indicator_config=indicator_config,
+        commission=getattr(args, "commission", 0.002),
+        slippage=getattr(args, "slippage", 0.0002),
+        bar_minutes=getattr(args, "bar_minutes", 1),
+    )
