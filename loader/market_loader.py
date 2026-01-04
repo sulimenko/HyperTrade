@@ -6,7 +6,7 @@ from loader.api_client import fetch_market_data
 MARKET_PATH = Path("data/ohlc")
 MARKET_PATH.mkdir(parents=True, exist_ok=True)
 
-@lru_cache(maxsize=512)
+@lru_cache(maxsize=2048)
 def load_market(symbol: str) -> pd.DataFrame | None:
     path = MARKET_PATH / f"{symbol}.parquet"
     if not path.exists():

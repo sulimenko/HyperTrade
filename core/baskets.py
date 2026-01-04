@@ -2,10 +2,18 @@ import time
 from loader.ensure_data import ensure_market_data
 from core.simulator import simulate_trade
 
+def indicator_config_to_key(cfg: dict) -> tuple:
+    return tuple(
+        (name, tuple(values))
+        for name, values in sorted(cfg.items())
+    )
+
 def backtest(signals, params):
     trades = []
     signal_stats = []
     start_time = time.time()
+
+    # indicator_key = indicator_config_to_key(params.indicator_config)
 
     for signal in signals:
         day_trades = []
@@ -13,7 +21,8 @@ def backtest(signals, params):
 
         for symbol in signal["symbols"]:
             # start_time = time.time()
-            ohlc = ensure_market_data(symbol, start=signal["datetime"], indicator_config=params.indicator_config)
+            ohlc = ensure_market_data(symbol, signal["datetime"], params.indicator_config)
+            # ohlc = ensure_market_data(symbol, signal["datetime"], indicator_key)
             # print(f"Время {symbol} ohlc: {(time.time() - start_time):.4f} секунд")
             if ohlc is None:
                 rejected.append((symbol, "no_market_data"))

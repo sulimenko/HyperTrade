@@ -1,13 +1,18 @@
+# from functools import lru_cache
 import pandas as pd
 from loader.market_loader import ensure_market_history
 from loader.indicator_calc import calculate_indicators
 from loader.indicator_store import load_indicator, save_indicator
 
-def ensure_market_data(symbol, start, indicator_config) -> pd.DataFrame | None:
+# @lru_cache(maxsize=2048)
+# def ensure_market_data(symbol: str, start: pd.Timestamp, indicator_key: tuple) -> pd.DataFrame | None:
+def ensure_market_data(symbol: str, start: pd.Timestamp, indicator_config) -> pd.DataFrame | None:
     market_df = ensure_market_history(symbol, start)
     if market_df is None or market_df.empty:
         return None
     
+    # indicator_config = { k: list(v) for k, v in indicator_key }
+
     ind_df = load_indicator(symbol)
     if ind_df is None or ind_df.empty:
         ind_df = calculate_indicators(market_df, indicator_config)

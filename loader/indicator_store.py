@@ -8,7 +8,7 @@ INDICATOR_PATH.mkdir(parents=True, exist_ok=True)
 def _indicator_file(symbol: str) -> Path:
     return INDICATOR_PATH / f"{symbol}.parquet"
 
-@lru_cache(maxsize=512)
+@lru_cache(maxsize=2048)
 def load_indicator(symbol: str) -> pd.DataFrame | None:
     path = _indicator_file(symbol)
     if not path.exists():
