@@ -5,17 +5,25 @@ import ta
 def calculate_indicators(df: pd.DataFrame, indicator_config: dict) -> pd.DataFrame:
     indicators = pd.DataFrame({"datetime": df["datetime"]})
 
-    # ===== EMA =====
+    close = df["close"].astype(float)
+    
+    # ===== EMA spread (EMA_fast - EMA_slow) =====
     ema_cfg = indicator_config.get("ema")
     if ema_cfg and ema_cfg[0]:
         _, _, fast, slow = ema_cfg
-        indicators[f"ema_{fast}_{slow}"] = df["close"].ewm(span=fast, adjust=False).mean() - df["close"].ewm(span=slow, adjust=False).mean()
+        if fast is None or slow is None:
+            raise ValueError("EMA включен, но fast/slow не заданы")
+        ema_fast = close.ewm(span=int(fast), adjust=False).mean()
+        ema_slow = close.ewm(span=int(slow), adjust=False).mean()
+        indicators[f"ema_{int(fast)}_{int(slow)}"] = ema_fast - ema_slow
 
     # ===== RSI =====
     rsi_cfg = indicator_config.get("rsi")
     if rsi_cfg and rsi_cfg[0]:
         _, _, _, period = rsi_cfg
-        indicators[f"rsi_{period}"] = ta.momentum.RSIIndicator(df["close"], period).rsi()
+        if period is None:
+            raise ValueError("RSI включен, но period не задан")
+        indicators[f"rsi_{int(period)}"] = ta.momentum.RSIIndicator(close, int(period)).rsi()
 
     # # ===== VOLUME =====
     # volume_cfg = indicator_config.get("volume")
