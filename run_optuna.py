@@ -25,7 +25,7 @@ def objective(trial, args):
     if not trades:
         return -1e9, 1e9
 
-    metrics = compute_metrics(trades)
+    metrics = compute_metrics(trades, params)
 
     return float(metrics.get("total_pnl", 0.0))
     # return {

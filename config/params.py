@@ -23,7 +23,7 @@ class StrategyParams:
     sl: float = 3.0
     tp: float = 4.0
     delay_open: int = 0
-    holding_minutes: int = 60
+    holding_minutes: int = 600
 
     # --- market ---
     bar_minutes: int = 15
@@ -80,17 +80,17 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     """Сбор параметров для Optuna."""
     indicator_config = _copy_default_indicator_config()
 
-    sl = trial.suggest_float("sl", 1.0, 5.0)
-    tp = trial.suggest_float("tp", 1.0, 6.0)
-    delay_open = trial.suggest_int("delay_open", 0, 60, step=5)
-    holding_minutes = trial.suggest_int("holding_minutes", 15, 240, step=15)
+    sl = trial.suggest_float("sl", args.sl_min, args.sl_max, step=args.sl_step)
+    tp = trial.suggest_float("tp", args.tp_min, args.tp_max, step=args.tp_step)
+    delay_open = trial.suggest_int("delay_open", args.delay_open_min, args.delay_open_max, step=args.delay_open_step)
+    holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
     # --- EMA ---
     use_ema = trial.suggest_categorical("use_ema", [False, True])
     if use_ema:
         ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
-        ema_fast = trial.suggest_int("ema_fast", 5, 30, step=1)
-        ema_slow = trial.suggest_int("ema_slow", 20, 120, step=1)
+        ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
+        ema_slow = trial.suggest_int("ema_slow", 40, 120, step=5)
         if ema_fast >= ema_slow:
             ema_fast = max(5, min(ema_fast, ema_slow - 1))
         indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
@@ -101,8 +101,8 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     use_rsi = trial.suggest_categorical("use_rsi", [False, True])
     if use_rsi:
         rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])
-        rsi_period = trial.suggest_int("rsi_period", 7, 28, step=1)
-        rsi_level = trial.suggest_int("rsi_level", 20, 80, step=5)
+        rsi_period = trial.suggest_int("rsi_period", 12, 21, step=3)
+        rsi_level = trial.suggest_int("rsi_level", 20, 80, step=10)
         indicator_config["rsi"] = [True, rsi_sign, rsi_level, rsi_period]
     else:
         indicator_config["rsi"] = [False, None, None, None]

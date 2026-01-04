@@ -35,7 +35,7 @@ def main(save=True):
     signals = load_signals(args.signals)
     trades, signal_stats = backtest(signals, params)
 
-    metrics = compute_metrics(trades)
+    metrics = compute_metrics(trades, params)
 
     if save:
         save_csv(pd.DataFrame(trades), "trades.csv")
