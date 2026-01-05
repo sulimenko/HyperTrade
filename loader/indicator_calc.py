@@ -9,7 +9,7 @@ def calculate_indicators(df: pd.DataFrame, indicator_config: dict) -> pd.DataFra
     
     # ===== EMA spread (EMA_fast - EMA_slow) =====
     ema_cfg = indicator_config.get("ema")
-    if ema_cfg and ema_cfg[0]:
+    if ema_cfg and len(ema_cfg) >= 4 and ema_cfg[0]:
         _, _, fast, slow = ema_cfg
         if fast is None or slow is None:
             raise ValueError("EMA включен, но fast/slow не заданы")
@@ -19,7 +19,7 @@ def calculate_indicators(df: pd.DataFrame, indicator_config: dict) -> pd.DataFra
 
     # ===== RSI =====
     rsi_cfg = indicator_config.get("rsi")
-    if rsi_cfg and rsi_cfg[0]:
+    if rsi_cfg and len(rsi_cfg) >= 4 and rsi_cfg[0]:
         _, _, _, period = rsi_cfg
         if period is None:
             raise ValueError("RSI включен, но period не задан")
