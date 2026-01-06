@@ -27,11 +27,7 @@ def objective(trial, args):
 
     metrics = compute_metrics(trades, params)
 
-    return float(metrics.get("total_pnl", 0.0))
-    # return {
-    #     float(metrics.get("total_pnl", 0.0)),
-    #     float(metrics.get("max_drawdown", 0.0)),
-    # }
+    return float(metrics.get("score", 0.0))
 
 # def objective_narrow(trial, best_params):
 #     params = StrategyParams(

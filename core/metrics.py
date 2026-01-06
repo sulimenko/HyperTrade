@@ -1,26 +1,85 @@
-from typing import Optional, Any, Dict
+from typing import Optional, Any, Dict, Literal
+import math
 
 import numpy as np
 import pandas as pd
 
+
+# ---------------------------
+# Helpers
+# ---------------------------
+
 def max_drawdown(equity: pd.Series) -> float:
     """Максимальная просадка по кривой equity (в тех же единицах, что equity)."""
+    if equity.empty:
+        return 0.0
     peak = equity.cummax()
     dd = equity - peak
     return float(-dd.min())
 
-def _safe_div(a: float, b: float, default: float = 0.0) -> float:
-    return float(a / b) if b not in (0, 0.0, None) else float(default)
 
-def _cvar(x: np.ndarray, alpha: float = 0.05) -> float:
+def _is_bad(x: Any) -> bool:
+    try:
+        return x is None or (isinstance(x, float) and math.isnan(x))
+    except Exception:
+        return x is None
+
+
+def _safe_float(x: Any, default: float = 0.0) -> float:
+    if _is_bad(x):
+        return float(default)
+    try:
+        return float(x)
+    except Exception:
+        return float(default)
+
+
+def _safe_int(x: Any, default: int = 0) -> int:
+    if _is_bad(x):
+        return int(default)
+    try:
+        return int(x)
+    except Exception:
+        return int(default)
+
+
+def _safe_div(a: float, b: float, default: float = 0.0) -> float:
+    a = _safe_float(a, default=0.0)
+    b = _safe_float(b, default=0.0)
+    if b == 0.0:
+        return float(default)
+    return float(a / b)
+
+
+def clamp(x: float, lo: float, hi: float) -> float:
+    x = _safe_float(x, default=lo)
+    return float(max(lo, min(hi, x)))
+
+
+def log1p_pos(x: float) -> float:
+    """log(1+x) but safe for x<=0 -> 0"""
+    x = _safe_float(x, default=0.0)
+    return float(math.log1p(max(0.0, x)))
+
+
+def _cvar_left_tail(x: np.ndarray, alpha: float = 0.05) -> float:
+    """
+    CVaR (Expected Shortfall) по левому хвосту.
+    Возвращает среднее худших alpha-доли значений.
+    """
     if x.size == 0:
         return 0.0
     x_sorted = np.sort(x)
     k = max(1, int(np.floor(alpha * x_sorted.size)))
     return float(x_sorted[:k].mean())
 
-def _chunk_stability(x: np.ndarray, n_chunks: int = 4) -> float:
-    """Нестабильность среднего по чанкам: std(chunk_means) / (abs(global_mean) + eps)."""
+
+def _chunk_instability(x: np.ndarray, n_chunks: int = 4) -> float:
+    """
+    Нестабильность среднего по чанкам:
+      std(chunk_means) / (abs(global_mean) + eps).
+    Меньше = лучше.
+    """
     if x.size < n_chunks * 5:
         return 1.0  # мало данных → считаем нестабильным
 
@@ -28,12 +87,16 @@ def _chunk_stability(x: np.ndarray, n_chunks: int = 4) -> float:
     means = np.array([c.mean() for c in chunks if c.size > 0], dtype=float)
     if means.size < 2:
         return 1.0
-    global_mean = x.mean()
+    global_mean = float(x.mean())
     eps = 1e-9
     return float(means.std(ddof=1) / (abs(global_mean) + eps))
 
+
 def complexity_penalty(params: Optional[Any]) -> float:
-    """Штраф за сложность (простая защита от переобучения): число включённых фильтров."""
+    """
+    Штраф за сложность (простая защита от переобучения): число включённых фильтров.
+    Возвращает число в "баллах" (обычно маленькое).
+    """
     if params is None:
         return 0.0
     cfg = getattr(params, "indicator_config", None)
@@ -45,18 +108,123 @@ def complexity_penalty(params: Optional[Any]) -> float:
         if isinstance(v, (list, tuple)) and len(v) > 0 and bool(v[0]):
             enabled += 1
 
+    # Подбери коэффициент под масштаб твоего score.
     return 0.05 * enabled
 
-def compute_metrics(trades: list[dict], params: Optional[Any] = None) -> Dict[str, float]:
+
+def sample_penalty(n_trades: int) -> float:
+    """
+    Штраф за слишком маленькую выборку сделок, чтобы Optuna не “влюблялась”
+    в случайные удачные конфиги.
+    """
+    n = int(n_trades)
+    if n < 30:
+        return 0.30
+    if n < 60:
+        return 0.15
+    if n < 120:
+        return 0.05
+    return 0.0
+
+
+# ---------------------------
+# Variant A Objective
+# ---------------------------
+
+def objective_variant_a(
+    summary: Dict[str, float],
+    *,
+    trades_target: int = 800,
+    gates: Optional[Dict[str, float]] = None,
+) -> float:
+    """
+    Risk-adjusted objective (Variant A).
+
+    trades_target: "нормальное" число сделок; используется мягкий симметричный штраф.
+    gates: опциональные пороги для hard-gates, напр:
+      {
+        "min_total_pnl": 0.0,
+        "max_max_drawdown": 1e9,
+        "min_trades": 30,
+      }
+    """
+    gates = gates or {}
+    total_pnl = _safe_float(summary.get("total_pnl", 0.0), 0.0)
+    max_dd    = _safe_float(summary.get("max_drawdown", 0.0), 0.0)
+    calmar    = _safe_float(summary.get("calmar", 0.0), 0.0)
+    sharpe_t  = _safe_float(summary.get("sharpe_trade", 0.0), 0.0)
+    sortino_t = _safe_float(summary.get("sortino_trade", 0.0), 0.0)
+    cvar_5    = _safe_float(summary.get("cvar_5", 0.0), 0.0)
+    stability = _safe_float(summary.get("stability", 0.0), 0.0)  # это "нестабильность": меньше лучше
+    trades    = _safe_int(summary.get("trades", 0), 0)
+
+    # --- Hard gates ---
+    min_total_pnl = _safe_float(gates.get("min_total_pnl", 0.0), 0.0)
+    min_trades    = int(gates.get("min_trades", 1))
+    max_mdd_gate  = _safe_float(gates.get("max_max_drawdown", float("inf")), float("inf"))
+
+    if total_pnl <= min_total_pnl:
+        return -1e9
+    if trades < min_trades:
+        return -1e9
+    if max_dd > max_mdd_gate:
+        return -1e9
+
+    # stability у тебя: "меньше = лучше", поэтому превращаем в "лучше-больше"
+    # чтобы можно было добавлять как бонус.
+    stability_good = clamp(1.0 - stability, 0.0, 1.0)
+
+    # CVaR может быть отрицательным (левый хвост), для штрафа берём модуль.
+    cvar_pen = abs(cvar_5)
+
+    score = 0.0
+    score += log1p_pos(total_pnl)
+    score += 0.6 * log1p_pos(max(0.0, calmar))
+    score += 0.4 * clamp(sharpe_t,  -2.0, 4.0)
+    score += 0.4 * clamp(sortino_t, -2.0, 6.0)
+    score += 0.6 * stability_good
+
+    score -= 0.9 * log1p_pos(max_dd)
+    score -= 0.6 * log1p_pos(cvar_pen)
+
+    # Мягкий контроль trades вокруг таргета
+    score -= 0.25 * abs(math.log1p(trades) - math.log1p(max(1, trades_target)))
+
+    # Если ты хочешь учитывать penalties, добавляй их снаружи (ниже в compute_metrics)
+    return float(score)
+
+
+# ---------------------------
+# Metrics computation
+# ---------------------------
+
+ObjectiveName = Literal["legacy", "variant_a"]
+
+def compute_metrics(
+    trades: list[dict],
+    params: Optional[Any] = None,
+    *,
+    objective: ObjectiveName = "variant_a",
+    trades_target: int = 800,
+    objective_gates: Optional[Dict[str, float]] = None,
+) -> Dict[str, float]:
+    """
+    Возвращает summary-метрики + score.
+    objective:
+      - "legacy": твой старый score (expectancy - dd - ...)
+      - "variant_a": новый боевой objective
+    """
     df = pd.DataFrame(trades)
     if df.empty:
         return {}
-    
+
+    # фильтр rejected (если есть)
     if "rejected" in df.columns:
         df = df[df["rejected"] == False]  # noqa: E712
     if df.empty:
         return {}
-    
+
+    # сортировка по времени для корректной equity/стабильности
     sort_col = None
     for c in ("exit_time", "entry_time", "datetime"):
         if c in df.columns:
@@ -65,11 +233,11 @@ def compute_metrics(trades: list[dict], params: Optional[Any] = None) -> Dict[st
     if sort_col:
         df = df.sort_values(sort_col)
 
-    # mdd = max_drawdown(df["pnl"])
-    # score = expectancy - mdd * 0.5
-
     pnl = df["pnl"].astype(float).to_numpy()
-    
+    n = int(pnl.size)
+    total_pnl = float(pnl.sum())
+
+    # Доходности: prefer return_pct, иначе pnl как прокси (не идеально, но лучше чем ничего)
     if "return_pct" in df.columns:
         rets = df["return_pct"].astype(float).to_numpy() / 100.0
     else:
@@ -79,57 +247,46 @@ def compute_metrics(trades: list[dict], params: Optional[Any] = None) -> Dict[st
     losses = pnl[pnl < 0]
 
     gross_profit = float(wins.sum()) if wins.size else 0.0
-    gross_loss = float(losses.sum()) if losses.size else 0.0
+    gross_loss = float(losses.sum()) if losses.size else 0.0  # отрицательное или 0
 
     avg_win = float(wins.mean()) if wins.size else 0.0
-    avg_loss = float(losses.mean()) if losses.size else 0.0
+    avg_loss = float(losses.mean()) if losses.size else 0.0  # отрицательное или 0
 
-    win_rate = _safe_div(wins.size, pnl.size, 0.0)
+    win_rate = _safe_div(wins.size, n, 0.0)
     loss_rate = 1.0 - win_rate
 
     expectancy = win_rate * avg_win + loss_rate * avg_loss
 
-    profit_factor = _safe_div(gross_profit, abs(gross_loss), 10.0) if gross_loss < 0 else 10.0
+    # Profit factor: если нет лоссов → capped
+    if gross_loss < 0:
+        profit_factor = _safe_div(gross_profit, abs(gross_loss), 10.0)
+    else:
+        profit_factor = 10.0
 
     equity = pd.Series(pnl).cumsum()
     mdd = max_drawdown(equity)
-    total_pnl = float(pnl.sum())
 
-        # Risk-adjusted
+    # Risk-adjusted (на trade returns)
     ret_mean = float(np.mean(rets)) if rets.size else 0.0
     ret_std = float(np.std(rets, ddof=1)) if rets.size > 1 else 0.0
-    sharpe = _safe_div(ret_mean, ret_std, 0.0) * (np.sqrt(rets.size) if rets.size > 1 else 0.0)
+    sharpe = _safe_div(ret_mean, ret_std, 0.0) * (float(np.sqrt(rets.size)) if rets.size > 1 else 0.0)
 
     downside = rets[rets < 0]
     downside_std = float(np.std(downside, ddof=1)) if downside.size > 1 else 0.0
-    sortino = _safe_div(ret_mean, downside_std, 0.0) * (np.sqrt(rets.size) if rets.size > 1 else 0.0)
+    sortino = _safe_div(ret_mean, downside_std, 0.0) * (float(np.sqrt(rets.size)) if rets.size > 1 else 0.0)
 
     calmar = _safe_div(total_pnl, mdd, 0.0)
-    cvar_5 = _cvar(rets, 0.05)
+
+    # CVaR на левом хвосте returns (обычно будет отрицательный)
+    cvar_5 = _cvar_left_tail(rets, 0.05)
 
     # Overfit guards
-    stability = _chunk_stability(rets, n_chunks=4)  # меньше = лучше
+    instability = _chunk_instability(rets, n_chunks=4)  # меньше = лучше
     comp_pen = complexity_penalty(params)
+    samp_pen = sample_penalty(n)
 
-    n = pnl.size
-    sample_pen = 0.0
-    if n < 30:
-        sample_pen = 0.30
-    elif n < 60:
-        sample_pen = 0.15
-    elif n < 120:
-        sample_pen = 0.05
-
-    score = (
-        expectancy
-        - 0.50 * mdd
-        - 0.20 * abs(cvar_5) * 100.0
-        - 0.15 * stability
-        - comp_pen
-        - sample_pen
-    )
-
-    return {
+    # Собираем summary
+    summary: Dict[str, float] = {
         "trades": float(n),
         "win_rate": float(win_rate),
         "profit_factor": float(profit_factor),
@@ -142,8 +299,33 @@ def compute_metrics(trades: list[dict], params: Optional[Any] = None) -> Dict[st
         "sortino_trade": float(sortino),
         "calmar": float(calmar),
         "cvar_5": float(cvar_5),
-        "stability": float(stability),
+        # сохраняем как раньше по имени stability, но это именно "нестабильность"
+        "stability": float(instability),
         "complexity_penalty": float(comp_pen),
-        "sample_penalty": float(sample_pen),
-        "score": float(score),
+        "sample_penalty": float(samp_pen),
     }
+
+    # --- Score ---
+    if objective == "legacy":
+        # Твой старый score (оставил, но чуть аккуратнее с масштабом CVaR)
+        score = (
+            expectancy
+            - 0.50 * mdd
+            - 0.20 * abs(cvar_5) * 100.0
+            - 0.15 * instability
+            - comp_pen
+            - samp_pen
+        )
+    else:
+        # Variant A (боевой), плюс штрафы за сложность/малую выборку прямо здесь
+        score = objective_variant_a(
+            summary,
+            trades_target=trades_target,
+            gates=objective_gates,
+        )
+        score -= comp_pen
+        score -= samp_pen
+
+    summary["score"] = float(score)
+
+    return summary

@@ -46,7 +46,7 @@ def build_single_params(args: Any) -> StrategyParams:
     indicator_config = _copy_default_indicator_config()
 
     # EMA filter
-    if getattr(args, "use_ema", False):
+    if getattr(args, "ema_enabled", False):
         fast = getattr(args, "ema_fast", None)
         slow = getattr(args, "ema_slow", None)
         sign = getattr(args, "ema_sign", None)  # above/below
@@ -55,7 +55,7 @@ def build_single_params(args: Any) -> StrategyParams:
         indicator_config["ema"] = [False, None, None, None]
 
     # RSI filter
-    if getattr(args, "use_rsi", False):
+    if getattr(args, "rsi_enabled", False):
         period = getattr(args, "rsi_period", None)
         level = getattr(args, "rsi_level", None)
         sign = getattr(args, "rsi_sign", None)  # above/below
@@ -84,7 +84,7 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
     # --- EMA ---
-    use_ema = trial.suggest_categorical("use_ema", [False, True])
+    use_ema = trial.suggest_categorical("ema_enabled", [False, True])
     if use_ema:
         ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
         ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
@@ -96,7 +96,7 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
         indicator_config["ema"] = [False, None, None, None]
 
     # --- RSI ---
-    use_rsi = trial.suggest_categorical("use_rsi", [False, True])
+    use_rsi = trial.suggest_categorical("rsi_enabled", [False, True])
     if use_rsi:
         rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])
         rsi_period = trial.suggest_int("rsi_period", 12, 21, step=3)
