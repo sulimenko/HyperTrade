@@ -10,7 +10,6 @@ MARKET_PATH.mkdir(parents=True, exist_ok=True)
 def _read_market(path_str: str, mtime_ns: int) -> pd.DataFrame:
     return pd.read_parquet(path_str, engine="pyarrow")
 
-@lru_cache(maxsize=2048)
 def load_market(symbol: str) -> pd.DataFrame | None:
     path = MARKET_PATH / f"{symbol}.parquet"
     if not path.exists():
@@ -36,7 +35,10 @@ def ensure_market_history(symbol: str, start, api=True) -> pd.DataFrame | None:
             return None
 
     # ⬇️ догружаем через API
-    api_df = fetch_market_data(symbol)
+    limit = 15000
+    if len(df) > limit * 0.8:
+        limit += 5000
+    api_df = fetch_market_data(symbol, limit)
     if api_df is None or api_df.empty:
         return df
 

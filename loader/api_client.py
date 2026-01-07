@@ -36,11 +36,11 @@ def search_symbol(symbol: str) -> Optional[dict]:
 
     return None
 
-def fetch_candles(instrument: dict) -> pd.DataFrame:
+def fetch_candles(instrument: dict, limit: int) -> pd.DataFrame:
     payload = {
         "instruments": [instrument],
         "period": 60 * 15,
-        "limit": 15000
+        "limit": limit
     }
 
     response = requests.post(
@@ -65,11 +65,11 @@ def fetch_candles(instrument: dict) -> pd.DataFrame:
     cols = ['datetime'] + [col for col in ohlc.columns if col != 'timestamp' and col != 'datetime']
     return ohlc[cols]
 
-def fetch_market_data(symbol: str) -> pd.DataFrame:
+def fetch_market_data(symbol: str, limit: int) -> pd.DataFrame:
     instrument = search_symbol(symbol)
 
     if instrument is None:
         logging.warning(f"Symbol {symbol} not found on USA markets")
         return None
 
-    return fetch_candles(instrument)
+    return fetch_candles(instrument, limit)

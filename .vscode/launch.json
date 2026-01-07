@@ -24,6 +24,7 @@
       "request": "launch",
       "program": "${workspaceFolder}/run_optuna.py",
       "args": [
+        "--signals=data/signals/PF20240393.csv",
         "--sl_min=3.0",
         "--sl_max=15.0",
         "--tp_min=4.0",
