@@ -16,32 +16,54 @@ from core.early_stopping import EarlyStopper
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
-def objective(trial, args):
+def objective(trial: optuna.trial.Trial, args, signals):
     params = build_optuna_params(trial, args)
 
-    signals = load_signals(args.signals)
     trades, _ = backtest(signals, params)
 
     if not trades:
-        return -1e9, 1e9
+        trial.set_user_attr("no_trades", 1.0)
+        return -1e9
 
-    metrics = compute_metrics(trades, params)
+    # Считаем метрики + score (Variant A по умолчанию)
+    metrics = compute_metrics(
+        trades,
+        params,
+        objective="variant_a",
+        trades_target=args.trades_target,
+        objective_gates={
+            "min_total_pnl": args.gate_min_total_pnl,
+            "min_trades": args.gate_min_trades,
+            "max_max_drawdown": args.gate_max_drawdown,
+            "k_hold": args.k_hold,
+        },
+        delay_penalty_k=args.k_delay,
+    )
 
-    return float(metrics.get("score", 0.0))
+    # Сохраняем компоненты score, чтобы потом было видно в trials.csv
+    keys_to_save = [
+        "score",
+        "total_pnl",
+        "max_drawdown",
+        "cvar_5",
+        "instability",
+        "trades",
+        "calmar",
+        "sharpe_trade",
+        "sortino_trade",
+        "avg_hold_minutes",
+        "complexity_penalty",
+        "sample_penalty",
+    ]
+    for k in keys_to_save:
+        if k in metrics and metrics[k] is not None:
+            try:
+                trial.set_user_attr(k, float(metrics[k]))
+            except Exception:
+                pass
 
-# def objective_narrow(trial, best_params):
-#     params = StrategyParams(
-#         sl=trial.suggest_float("sl", max(0.1, best_params["sl"] - 0.5), best_params["sl"] + 0.5, step=0.1),
-#         tp=trial.suggest_float("tp", max(0.5, best_params["tp"] - 1.0), best_params["tp"] + 1.0, step=0.2),
-#         delay_open=trial.suggest_int("delay_open", max(0, best_params["delay_open"] - 30), best_params["delay_open"] + 30, step=5),
-#         holding_minutes=best_params["holding_minutes"],
-#     )
+    return float(metrics.get("score", -1e9))
 
-#     signals = load_signals(SIGNALS_PATH)
-#     trades, _ = backtest(signals, params)
-#     metrics = compute_metrics(trades)
-
-#     return metrics.get("total_pnl", 0)
 
 def run():
     parser = argparse.ArgumentParser()
@@ -65,9 +87,23 @@ def run():
     parser.add_argument("--holding_minutes_step", type=int, default=60*3)
 
     parser.add_argument("--n_trials", type=int, default=300)
-    parser.add_argument("--dd_penalty", type=float, default=0.5)
+
+    # --- Objective tuning knobs ---
+    parser.add_argument("--trades_target", type=int, default=800)
+
+    # gates for hard filtering
+    parser.add_argument("--gate_min_total_pnl", type=float, default=0.0)
+    parser.add_argument("--gate_min_trades", type=int, default=100)
+    parser.add_argument("--gate_max_drawdown", type=float, default=1e18)
+
+    # penalties
+    parser.add_argument("--k_hold", type=float, default=0.35)     # штраф за log1p(avg_hold_minutes)
+    parser.add_argument("--k_delay", type=float, default=0.005)   # мягкий штраф за delay_open (предпочесть 0)
     
     args = parser.parse_args()
+
+    # Загружаем сигналы один раз
+    signals = load_signals(args.signals)
 
     # optuna.logging.disable_default_handler()
 
@@ -84,7 +120,7 @@ def run():
     study = optuna.create_study(direction="maximize", sampler=sampler)
     # study.optimize(make_objective(args), n_trials=args.n_trials)
     study.optimize(
-        lambda t: objective(t, args), 
+        lambda t: objective(t, args, signals), 
         callbacks=[EarlyStopper(patience=50, warmup=40)], 
         n_trials=args.n_trials
     )
@@ -94,42 +130,10 @@ def run():
     except Exception as e:
         print("⚠️ Failed to save Optuna results:", e)
 
-    if len(study.directions) == 1:
-        print("\n=== BEST PARAMS ===")
-        for k, v in study.best_trial.params.items():
-            print(f"{k:25}: {v}")
-        print("Score:", study.best_value)
-    else:
-        print("\n=== PARETO FRONT ===")
-        for i, t in enumerate(study.best_trials):
-            print(f"\n--- Trial {i} ---")
-            print("Values:", t.values)
-            for k, v in t.params.items():
-                print(f"{k:25}: {v}")
-
-    # best_params = study.best_params
-
-    # narrow_study = optuna.create_study(
-    #     direction="maximize",
-    #     sampler=optuna.samplers.TPESampler(
-    #         n_startup_trials=10,
-    #         multivariate=True,
-    #         seed=1337,
-    #     ),
-    # )
-
-    # narrow_study.optimize(
-    #     lambda t: objective_narrow(t, best_params),
-    #     callbacks=[EarlyStopper(patience=30, warmup=10)],
-    #     n_trials=150,
-    # )
-
-    # print("\n=== FINAL BEST (NARROW) ===")
-    # for k, v in narrow_study.best_params.items():
-    #     print(f"{k:25}: {v}")
-    # print("Final score:", narrow_study.best_value)
-
-    # save_optimization_results(narrow_study)
+    print("\n=== BEST PARAMS ===")
+    for k, v in study.best_trial.params.items():
+        print(f"{k:25}: {v}")
+    print("Score:", study.best_value)
 
 
 if __name__ == "__main__":

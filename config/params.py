@@ -84,8 +84,7 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
     # --- EMA ---
-    use_ema = False
-    # use_ema = trial.suggest_categorical("ema_enabled", [False, True])
+    use_ema = trial.suggest_categorical("ema_enabled", [False, True])
     if use_ema:
         ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
         ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
@@ -97,7 +96,6 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
         indicator_config["ema"] = [False, None, None, None]
 
     # --- RSI ---
-    use_rsi = False
     use_rsi = trial.suggest_categorical("rsi_enabled", [False, True])
     if use_rsi:
         rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])

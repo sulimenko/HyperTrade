@@ -23,6 +23,7 @@ SHORT = -1
 
 @nb.njit
 def simulate_trade_core(
+    dt_ns,
     ohlc,
     entry_idx,
     entry_ts,
@@ -33,7 +34,7 @@ def simulate_trade_core(
     slippage,
     commission
 ):
-    entry_price = ohlc[entry_idx, OPEN] * (1.0 + slippage * direction)
+    entry_price = ohlc[entry_idx, 0] * (1.0 + slippage * direction)
 
     if direction == LONG:
         sl_price = entry_price * (1.0 - sl_pct / 100.0)
@@ -49,11 +50,11 @@ def simulate_trade_core(
     reason = 2
 
     for i in range(entry_idx + 1, ohlc.shape[0]):
-        ts = ohlc[i, DT]
-        o  = ohlc[i, OPEN]
-        h  = ohlc[i, HIGH]
-        l  = ohlc[i, LOW]
-        c  = ohlc[i, CLOSE]
+        ts = dt_ns[i]
+        o  = ohlc[i, 0]
+        h  = ohlc[i, 1]
+        l  = ohlc[i, 2]
+        c  = ohlc[i, 3]
 
         # ---------- TIME EXIT ----------
         if ts > exit_deadline:
@@ -123,24 +124,25 @@ def simulate_trade_core(
     pnl = (exit_price - entry_price) * direction
     pnl -= commission * 2
 
-    return pnl, exit_price, exit_idx, reason
+    return pnl, entry_price, exit_price, exit_idx, reason
 
 def simulate_trade(symbol, signal_time, params, ohlc):
     try:
+        
         entry_dt = compute_entry_time(signal_time,params.delay_open)
         entry_idx = ohlc["datetime"].searchsorted(entry_dt)
 
+        if entry_idx >= len(ohlc):
+            return {"symbol": symbol, "rejected": True, "reject_reason": "no_candles_after_entry"}
+        
         if not filters(ohlc.iloc[entry_idx], params):
-            return {
-                "symbol": symbol,
-                "rejected": True,
-                "reject_reason": "indicators_filter_failed"
-            }
+            return {"symbol": symbol, "rejected": True, "reject_reason": "indicators_filter_failed"}
 
         direction = LONG  # currently only LONG trades are supported
 
+        dt_ns = ohlc["datetime"].values.astype("datetime64[ns]").astype(np.int64)
+
         ohlc_np = np.column_stack([
-            ohlc["datetime"].values.astype("datetime64[ns]").astype(np.int64),
             ohlc["open"].values,
             ohlc["high"].values,
             ohlc["low"].values,
@@ -150,7 +152,8 @@ def simulate_trade(symbol, signal_time, params, ohlc):
         entry_ts = np.int64(entry_dt.value)
         holding_ns = np.int64(params.holding_minutes * 60 * 1e9)
         
-        pnl, exit_price, exit_idx, reason = simulate_trade_core(
+        pnl, entry_price, exit_price, exit_idx, reason = simulate_trade_core(
+            dt_ns,
             ohlc_np,
             entry_idx,
             entry_ts,
@@ -163,7 +166,6 @@ def simulate_trade(symbol, signal_time, params, ohlc):
         )
 
         exit_dt = ohlc.iloc[exit_idx]["datetime"]
-        entry_price = ohlc_np[entry_idx, OPEN]
 
         return_pct = pnl / entry_price * 100
 
@@ -171,10 +173,10 @@ def simulate_trade(symbol, signal_time, params, ohlc):
             "symbol": symbol,
             "entry_dt": entry_dt,
             "exit_dt": exit_dt,
-            "entry_price": entry_price,
-            "exit_price": exit_price,
-            "pnl": pnl,
-            "return_pct": return_pct,
+            "entry_price": float(entry_price),
+            "exit_price": float(exit_price),
+            "pnl": float(pnl),
+            "return_pct": float(return_pct),
             "is_win": pnl > 0,
             "exit_reason": EXIT_REASON[reason],
             "rejected": False

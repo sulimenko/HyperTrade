@@ -118,12 +118,27 @@ def sample_penalty(n_trades: int) -> float:
     в случайные удачные конфиги.
     """
     n = int(n_trades)
-    if n < 30:
+    if n < 20:
         return 0.30
-    if n < 60:
+    if n < 40:
         return 0.15
-    if n < 120:
+    if n < 80:
         return 0.05
+    return 0.0
+
+def _compute_avg_hold_minutes(df: pd.DataFrame) -> float:
+    if "hold_minutes" in df.columns:
+        x = pd.to_numeric(df["hold_minutes"], errors="coerce")
+        x = x.replace([np.inf, -np.inf], np.nan).dropna()
+        return float(x.mean()) if len(x) else 0.0
+
+    if "entry_dt" in df.columns and "exit_dt" in df.columns:
+        entry = pd.to_datetime(df["entry_dt"], errors="coerce")
+        exit_ = pd.to_datetime(df["exit_dt"], errors="coerce")
+        dt = (exit_ - entry).dt.total_seconds() / 60.0
+        dt = dt.replace([np.inf, -np.inf], np.nan).dropna()
+        return float(dt.mean()) if len(dt) else 0.0
+
     return 0.0
 
 
@@ -155,8 +170,9 @@ def objective_variant_a(
     sharpe_t  = _safe_float(summary.get("sharpe_trade", 0.0), 0.0)
     sortino_t = _safe_float(summary.get("sortino_trade", 0.0), 0.0)
     cvar_5    = _safe_float(summary.get("cvar_5", 0.0), 0.0)
-    stability = _safe_float(summary.get("stability", 0.0), 0.0)  # это "нестабильность": меньше лучше
+    instability = _safe_float(summary.get("instability", 0.0), 0.0)
     trades    = _safe_int(summary.get("trades", 0), 0)
+    avg_hold = _safe_float(summary.get("avg_hold_minutes", 0.0), 0.0)
 
     # --- Hard gates ---
     min_total_pnl = _safe_float(gates.get("min_total_pnl", 0.0), 0.0)
@@ -170,9 +186,7 @@ def objective_variant_a(
     if max_dd > max_mdd_gate:
         return -1e9
 
-    # stability у тебя: "меньше = лучше", поэтому превращаем в "лучше-больше"
-    # чтобы можно было добавлять как бонус.
-    stability_good = clamp(1.0 - stability, 0.0, 1.0)
+    stability_good = clamp(1.0 - instability, 0.0, 1.0)
 
     # CVaR может быть отрицательным (левый хвост), для штрафа берём модуль.
     cvar_pen = abs(cvar_5)
@@ -190,7 +204,10 @@ def objective_variant_a(
     # Мягкий контроль trades вокруг таргета
     score -= 0.25 * abs(math.log1p(trades) - math.log1p(max(1, trades_target)))
 
-    # Если ты хочешь учитывать penalties, добавляй их снаружи (ниже в compute_metrics)
+    # k подбирается под масштаб score. Стартовое значение: 0.20–0.60 обычно норм.
+    k_hold = _safe_float(gates.get("k_hold", 0.35), 0.35)
+    score -= k_hold * math.log1p(max(0.0, avg_hold))
+
     return float(score)
 
 
@@ -207,12 +224,11 @@ def compute_metrics(
     objective: ObjectiveName = "variant_a",
     trades_target: int = 800,
     objective_gates: Optional[Dict[str, float]] = None,
+    delay_penalty_k: float = 0.005,
 ) -> Dict[str, float]:
     """
     Возвращает summary-метрики + score.
-    objective:
-      - "legacy": твой старый score (expectancy - dd - ...)
-      - "variant_a": новый боевой objective
+    delay_penalty_k: мягко предпочесть delay_open=0, но не запрещать.
     """
     df = pd.DataFrame(trades)
     if df.empty:
@@ -226,20 +242,27 @@ def compute_metrics(
 
     # сортировка по времени для корректной equity/стабильности
     sort_col = None
-    for c in ("exit_time", "entry_time", "datetime"):
-        if c in df.columns:
-            sort_col = c
+    for col in ("exit_dt", "entry_dt"):
+        if col in df.columns:
+            sort_col = col
             break
     if sort_col:
         df = df.sort_values(sort_col)
 
-    pnl = df["pnl"].astype(float).to_numpy()
+    pnl = pd.to_numeric(df.get("pnl"), errors="coerce")
+    pnl = pnl.replace([np.inf, -np.inf], np.nan).dropna().to_numpy(dtype=float)
     n = int(pnl.size)
+    if n == 0:
+        return {}
+    
     total_pnl = float(pnl.sum())
 
     # Доходности: prefer return_pct, иначе pnl как прокси (не идеально, но лучше чем ничего)
     if "return_pct" in df.columns:
-        rets = df["return_pct"].astype(float).to_numpy() / 100.0
+        rets = pd.to_numeric(df["return_pct"], errors="coerce")
+        rets = rets.replace([np.inf, -np.inf], np.nan).dropna().to_numpy(dtype=float) / 100.0
+        if rets.size != pnl.size:
+            rets = pnl.copy()
     else:
         rets = pnl.copy()
 
@@ -247,10 +270,10 @@ def compute_metrics(
     losses = pnl[pnl < 0]
 
     gross_profit = float(wins.sum()) if wins.size else 0.0
-    gross_loss = float(losses.sum()) if losses.size else 0.0  # отрицательное или 0
+    gross_loss = float(losses.sum()) if losses.size else 0.0
 
     avg_win = float(wins.mean()) if wins.size else 0.0
-    avg_loss = float(losses.mean()) if losses.size else 0.0  # отрицательное или 0
+    avg_loss = float(losses.mean()) if losses.size else 0.0
 
     win_rate = _safe_div(wins.size, n, 0.0)
     loss_rate = 1.0 - win_rate
@@ -276,14 +299,14 @@ def compute_metrics(
     sortino = _safe_div(ret_mean, downside_std, 0.0) * (float(np.sqrt(rets.size)) if rets.size > 1 else 0.0)
 
     calmar = _safe_div(total_pnl, mdd, 0.0)
-
-    # CVaR на левом хвосте returns (обычно будет отрицательный)
-    cvar_5 = _cvar_left_tail(rets, 0.05)
+    cvar_5 = _cvar_left_tail(rets, 0.05) # CVaR на левом хвосте returns (обычно будет отрицательный)
 
     # Overfit guards
     instability = _chunk_instability(rets, n_chunks=4)  # меньше = лучше
     comp_pen = complexity_penalty(params)
     samp_pen = sample_penalty(n)
+
+    avg_hold_minutes = _compute_avg_hold_minutes(df)
 
     # Собираем summary
     summary: Dict[str, float] = {
@@ -299,15 +322,14 @@ def compute_metrics(
         "sortino_trade": float(sortino),
         "calmar": float(calmar),
         "cvar_5": float(cvar_5),
-        # сохраняем как раньше по имени stability, но это именно "нестабильность"
-        "stability": float(instability),
+        "instability": float(instability),
+        "avg_hold_minutes": float(avg_hold_minutes),
         "complexity_penalty": float(comp_pen),
         "sample_penalty": float(samp_pen),
     }
 
     # --- Score ---
     if objective == "legacy":
-        # Твой старый score (оставил, но чуть аккуратнее с масштабом CVaR)
         score = (
             expectancy
             - 0.50 * mdd
@@ -326,6 +348,9 @@ def compute_metrics(
         score -= comp_pen
         score -= samp_pen
 
-    summary["score"] = float(score)
+    if delay_penalty_k and params is not None:
+        delay_open = int(getattr(params, "delay_open", 0))
+        score -= float(delay_penalty_k) * float(delay_open)
 
+    summary["score"] = float(score)
     return summary

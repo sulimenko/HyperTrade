@@ -5,30 +5,58 @@ from datetime import datetime
 
 RESULT_PATH = Path("results")
 
-def _result_file(type="optuna") -> str:
+def _result_file(kind="optuna") -> str:
     ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    path = RESULT_PATH / type / ts
+    path = RESULT_PATH / kind / ts
     path.mkdir(parents=True, exist_ok=True)
     return path
+
+def _to_jsonable(x):
+    try:
+        import numpy as np
+        if isinstance(x, (np.floating,)):
+            return float(x)
+        if isinstance(x, (np.integer,)):
+            return int(x)
+        if isinstance(x, (np.ndarray,)):
+            return x.tolist()
+    except Exception:
+        pass
+
+    if isinstance(x, (dict, list, tuple, set)):
+        return str(x)
+
+    return x
 
 def save_optimization_results(study):
     path = _result_file("optuna")
 
-    df = study.trials_dataframe()
-    for col in df.columns:
-        df[col] = df[col].apply(
-            lambda x: str(x) if isinstance(x, (dict, list, set)) else x
+    df = study.trials_dataframe(
+        attrs=(
+            "number",
+            "value",
+            "state",
+            "datetime_start",
+            "datetime_complete",
+            "duration",
+            "params",
+            "user_attrs",
         )
+    )
+    for col in df.columns:
+        df[col] = df[col].apply(_to_jsonable)
 
     df.to_csv(path / "trials.csv", index=False)
 
-    df_sorted = df.sort_values("value", ascending=False)
+    df_sorted = df[df["state"] == "COMPLETE"].sort_values("value", ascending=False)
     top = df_sorted.head(max(1, int(len(df) * 0.1)))
     top.to_csv(path / "top_trials.csv", index=False)
 
+    best = study.best_trial
     best_row = {
-        "best_value": study.best_value,
-        **study.best_params,
+        "best_value": float(best.value),
+        **best.params,
+        **{f"user_{k}": _to_jsonable(v) for k, v in (best.user_attrs or {}).items()},
     }
     pd.DataFrame([best_row]).to_csv(path / "best.csv", index=False)
 
@@ -38,6 +66,3 @@ def save_csv(df, name):
     path = _result_file("single")
     df.to_csv(path / name, index=False)
 
-# def save_json(data, path, name):
-#     with open(path / name, "w") as f:
-#         json.dump(data, f, indent=2, default=str)
