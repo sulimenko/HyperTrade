@@ -16,6 +16,15 @@ from core.early_stopping import EarlyStopper
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
+def str_to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
+        return False
+    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
+        return True
+    raise argparse.ArgumentTypeError(f'Boolean value expected.')
+
 def objective(trial: optuna.trial.Trial, args, signals):
     params = build_optuna_params(trial, args)
 
@@ -85,6 +94,9 @@ def run():
     parser.add_argument("--holding_minutes_min", type=int, default=60*24)
     parser.add_argument("--holding_minutes_max", type=int, default=60*24*4)
     parser.add_argument("--holding_minutes_step", type=int, default=60*3)
+
+    parser.add_argument("--ema_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--rsi_enabled", type=str_to_bool, default=False)
 
     parser.add_argument("--n_trials", type=int, default=300)
 

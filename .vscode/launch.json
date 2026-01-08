@@ -14,7 +14,7 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/run_single.py",
-      "args": ["--signals=data/signals/PF20250597.csv","--sl=15.0", "--tp=18.5", "--delay_open=0", "--holding_minutes=660"],
+      "args": ["--signals=data/signals/PF20250597.csv","--sl=3.0", "--tp=7.0", "--delay_open=0", "--holding_minutes=3960", "--ema_enabled=False", "--rsi_enabled=False"],
       "console": "integratedTerminal",
       "justMyCode": false
     },

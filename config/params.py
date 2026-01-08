@@ -46,7 +46,7 @@ def build_single_params(args: Any) -> StrategyParams:
     indicator_config = _copy_default_indicator_config()
 
     # EMA filter
-    if getattr(args, "ema_enabled", False):
+    if getattr(args, "ema_enabled", True):
         fast = getattr(args, "ema_fast", None)
         slow = getattr(args, "ema_slow", None)
         sign = getattr(args, "ema_sign", None)  # above/below
@@ -55,7 +55,7 @@ def build_single_params(args: Any) -> StrategyParams:
         indicator_config["ema"] = [False, None, None, None]
 
     # RSI filter
-    if getattr(args, "rsi_enabled", False):
+    if getattr(args, "rsi_enabled", True):
         period = getattr(args, "rsi_period", None)
         level = getattr(args, "rsi_level", None)
         sign = getattr(args, "rsi_sign", None)  # above/below
@@ -84,26 +84,26 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
     # --- EMA ---
-    use_ema = trial.suggest_categorical("ema_enabled", [False, True])
-    if use_ema:
-        ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
-        ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
-        ema_slow = trial.suggest_int("ema_slow", 40, 120, step=5)
-        if ema_fast >= ema_slow:
-            ema_fast = max(5, min(ema_fast, ema_slow - 1))
-        indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
-    else:
-        indicator_config["ema"] = [False, None, None, None]
+    indicator_config["ema"] = [False, None, None, None]
+    if args.ema_enabled:
+        use_ema = trial.suggest_categorical("ema_enabled", [False, True])
+        if use_ema:
+            ema_sign = trial.suggest_categorical("ema_sign", ["above", "below"])
+            ema_fast = trial.suggest_int("ema_fast", 10, 30, step=5)
+            ema_slow = trial.suggest_int("ema_slow", 40, 120, step=5)
+            if ema_fast >= ema_slow:
+                ema_fast = max(5, min(ema_fast, ema_slow - 1))
+            indicator_config["ema"] = [True, ema_sign, ema_fast, ema_slow]
 
     # --- RSI ---
-    use_rsi = trial.suggest_categorical("rsi_enabled", [False, True])
-    if use_rsi:
-        rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])
-        rsi_period = trial.suggest_int("rsi_period", 12, 21, step=3)
-        rsi_level = trial.suggest_int("rsi_level", 20, 80, step=10)
-        indicator_config["rsi"] = [True, rsi_sign, rsi_level, rsi_period]
-    else:
-        indicator_config["rsi"] = [False, None, None, None]
+    indicator_config["rsi"] = [False, None, None, None]
+    if args.rsi_enabled:
+        use_rsi = trial.suggest_categorical("rsi_enabled", [False, True])
+        if use_rsi:
+            rsi_sign = trial.suggest_categorical("rsi_sign", ["above", "below"])
+            rsi_period = trial.suggest_int("rsi_period", 12, 21, step=3)
+            rsi_level = trial.suggest_int("rsi_level", 20, 80, step=10)
+            indicator_config["rsi"] = [True, rsi_sign, rsi_level, rsi_period]
 
     return StrategyParams(
         sl=sl,

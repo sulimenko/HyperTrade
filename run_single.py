@@ -9,6 +9,15 @@ from utils.save import save_csv
 
 SIGNALS_PATH = "data/signals/signals.csv"
 
+def str_to_bool(value):
+    if isinstance(value, bool):
+        return value
+    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
+        return False
+    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
+        return True
+    raise argparse.ArgumentTypeError(f'Boolean value expected.')
+
 def main(save=True):
     parser = argparse.ArgumentParser()
 
@@ -18,12 +27,12 @@ def main(save=True):
     parser.add_argument("--delay_open", type=int, default=120)
     parser.add_argument("--holding_minutes", type=int, default=60*24*3)
 
-    parser.add_argument("--ema_enabled", type=bool, default=False)
+    parser.add_argument("--ema_enabled", type=str_to_bool, default=False)
     parser.add_argument("--ema_sign", type=str, default="above")
     parser.add_argument("--ema_fast", type=int, default=20)
     parser.add_argument("--ema_slow", type=int, default=60)
 
-    parser.add_argument("--rsi_enabled", type=bool, default=False)
+    parser.add_argument("--rsi_enabled", type=str_to_bool, default=False)
     parser.add_argument("--rsi_sign", type=str, default="above")
     parser.add_argument("--rsi_level", type=int, default=50)
     parser.add_argument("--rsi_period", type=int, default=18)
