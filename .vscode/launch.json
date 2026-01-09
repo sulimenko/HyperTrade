@@ -14,7 +14,7 @@
       "type": "python",
       "request": "launch",
       "program": "${workspaceFolder}/run_single.py",
-      "args": ["--signals=data/signals/PF20250597.csv","--sl=3.0", "--tp=7.0", "--delay_open=0", "--holding_minutes=3960", "--ema_enabled=False", "--rsi_enabled=False"],
+      "args": ["--signals=data/signals/PF20240393.csv","--sl=3.0", "--tp=7.0", "--delay_open=0", "--holding_minutes=3960", "--ema_enabled=False", "--rsi_enabled=False"],
       "console": "integratedTerminal",
       "justMyCode": false
     },
@@ -29,6 +29,7 @@
         "--sl_max=15.0",
         "--tp_min=4.0",
         "--tp_max=20.0",
+        "--psar_enabled=True",
         "--delay_open_min=0",
         "--delay_open_max=0",
         "--holding_minutes_min=300",

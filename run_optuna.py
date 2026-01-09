@@ -12,26 +12,25 @@ from core.baskets import backtest
 from core.metrics import compute_metrics
 from config.params import build_optuna_params
 from utils.save import save_optimization_results
+from utils.cli import str_to_bool
 from core.early_stopping import EarlyStopper
 
 SIGNALS_PATH = "data/signals/signals.csv"
-
-def str_to_bool(value):
-    if isinstance(value, bool):
-        return value
-    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
-        return False
-    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
-        return True
-    raise argparse.ArgumentTypeError(f'Boolean value expected.')
 
 def objective(trial: optuna.trial.Trial, args, signals):
     params = build_optuna_params(trial, args)
 
     trades, _ = backtest(signals, params)
 
+    ua = {}
+
     if not trades:
-        trial.set_user_attr("no_trades", 1.0)
+        ua["no_trades"] = 1.0
+        for k, v in ua.items():
+            try:
+                trial.set_user_attr(k, float(v))
+            except Exception:
+                pass
         return -1e9
 
     # Считаем метрики + score (Variant A по умолчанию)
@@ -49,7 +48,36 @@ def objective(trial: optuna.trial.Trial, args, signals):
         delay_penalty_k=args.k_delay,
     )
 
-    # Сохраняем компоненты score, чтобы потом было видно в trials.csv
+
+    try:
+        total = 0
+        sl_n = tp_n = time_n = psar_n = 0
+
+        for t in trades:
+            if t.get("rejected"):
+                continue
+            r = t.get("exit_reason")
+            if r is None:
+                continue
+            total += 1
+            if r == "sl":
+                sl_n += 1
+            elif r == "tp":
+                tp_n += 1
+            elif r == "time_exit":
+                time_n += 1
+            elif r == "psar":
+                psar_n += 1
+
+        if total > 0:
+            ua["exit_sl_frac"] = sl_n / total
+            ua["exit_tp_frac"] = tp_n / total
+            ua["exit_time_exit_frac"] = time_n / total
+            ua["exit_psar_frac"] = psar_n / total
+            ua["exit_total"] = total
+    except Exception:
+        pass
+
     keys_to_save = [
         "score",
         "total_pnl",
@@ -63,13 +91,19 @@ def objective(trial: optuna.trial.Trial, args, signals):
         "avg_hold_minutes",
         "complexity_penalty",
         "sample_penalty",
+        "expectancy",
+        "profit_factor",
     ]
     for k in keys_to_save:
-        if k in metrics and metrics[k] is not None:
-            try:
-                trial.set_user_attr(k, float(metrics[k]))
-            except Exception:
-                pass
+        v = metrics.get(k)
+        if v is not None:
+            ua[k] = v
+    
+    for k, v in ua.items():
+        try:
+            trial.set_user_attr(k, float(v))
+        except Exception:
+            pass
 
     return float(metrics.get("score", -1e9))
 
@@ -86,6 +120,10 @@ def run():
     parser.add_argument("--tp_min", type=float, default=3.0)
     parser.add_argument("--tp_max", type=float, default=15.0)
     parser.add_argument("--tp_step", type=float, default=0.5)
+
+    parser.add_argument("--psar_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--psar_step", type=float, default=0.02)
+    parser.add_argument("--psar_max", type=float, default=0.2)
 
     parser.add_argument("--delay_open_min", type=int, default=0)
     parser.add_argument("--delay_open_max", type=int, default=600)

@@ -13,9 +13,13 @@ def calculate_indicators(df: pd.DataFrame, indicator_config: dict) -> pd.DataFra
         _, _, fast, slow = ema_cfg
         if fast is None or slow is None:
             raise ValueError("EMA включен, но fast/slow не заданы")
-        ema_fast = close.ewm(span=int(fast), adjust=False).mean()
-        ema_slow = close.ewm(span=int(slow), adjust=False).mean()
-        indicators[f"ema_{int(fast)}_{int(slow)}"] = ema_fast - ema_slow
+
+        fast = int(fast)
+        slow = int(slow)
+        # считаем обе EMA, храним отдельно
+        indicators[f"ema_{fast}"] = close.ewm(span=fast, adjust=False).mean()
+        if slow != fast:
+            indicators[f"ema_{slow}"] = close.ewm(span=slow, adjust=False).mean()
 
     # ===== RSI =====
     rsi_cfg = indicator_config.get("rsi")

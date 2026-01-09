@@ -6,17 +6,9 @@ from core.baskets import backtest
 from core.metrics import compute_metrics
 from config.params import build_single_params
 from utils.save import save_csv
+from utils.cli import str_to_bool
 
 SIGNALS_PATH = "data/signals/signals.csv"
-
-def str_to_bool(value):
-    if isinstance(value, bool):
-        return value
-    if value.lower() in {'false', 'f', '0', 'no', 'n'}:
-        return False
-    elif value.lower() in {'true', 't', '1', 'yes', 'y'}:
-        return True
-    raise argparse.ArgumentTypeError(f'Boolean value expected.')
 
 def main(save=True):
     parser = argparse.ArgumentParser()
@@ -24,6 +16,11 @@ def main(save=True):
     parser.add_argument("--signals", type=str, default=SIGNALS_PATH)
     parser.add_argument("--sl", type=float, default=2.5)
     parser.add_argument("--tp", type=float, default=4.0)
+
+    parser.add_argument("--psar_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--psar_step", type=float, default=0.02)
+    parser.add_argument("--psar_max", type=float, default=0.2)
+
     parser.add_argument("--delay_open", type=int, default=120)
     parser.add_argument("--holding_minutes", type=int, default=60*24*3)
 

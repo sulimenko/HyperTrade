@@ -36,7 +36,7 @@ def ensure_market_history(symbol: str, start, api=True) -> pd.DataFrame | None:
 
     # ⬇️ догружаем через API
     limit = 15000
-    if len(df) > limit * 0.8:
+    if df is not None and len(df) > limit * 0.8:
         limit += 5000
     api_df = fetch_market_data(symbol, limit)
     if api_df is None or api_df.empty:

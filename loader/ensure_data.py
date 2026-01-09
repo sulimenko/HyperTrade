@@ -9,8 +9,10 @@ def _required_indicator_cols(indicator_config) -> list[str]:
     ema_cfg = indicator_config.get("ema")
     if ema_cfg and len(ema_cfg) >= 4 and bool(ema_cfg[0]):
         fast, slow = ema_cfg[2], ema_cfg[3]
-        if fast is not None and slow is not None:
-            cols.append(f"ema_{int(fast)}_{int(slow)}")
+        if fast is not None:
+            cols.append(f"ema_{int(fast)}")
+        if slow is not None and int(slow) != int(fast):
+            cols.append(f"ema_{int(slow)}")
 
     rsi_cfg = indicator_config.get("rsi")
     if rsi_cfg and len(rsi_cfg) >= 4 and bool(rsi_cfg[0]):

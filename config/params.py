@@ -23,6 +23,11 @@ class StrategyParams:
     delay_open: int = 0
     holding_minutes: int = 600
 
+    # --- PSAR trailing stop ---
+    psar_enabled: bool = False
+    psar_max: float = 0.1
+    psar_step: float = 0.005
+
     # --- market ---
     bar_minutes: int = 15
 
@@ -66,6 +71,9 @@ def build_single_params(args: Any) -> StrategyParams:
     return StrategyParams(
         sl=float(getattr(args, "sl", 3.0)),
         tp=float(getattr(args, "tp", 3.0)),
+        psar_enabled=bool(getattr(args, "psar_enabled", False)),
+        psar_max=float(getattr(args, "psar_max", 0.1)),
+        psar_step=float(getattr(args, "psar_step", 0.005)),
         delay_open=int(getattr(args, "delay_open", 0)),
         holding_minutes=int(getattr(args, "holding_minutes", 60)),
         indicator_config=indicator_config,
@@ -80,6 +88,16 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
 
     sl = trial.suggest_float("sl", args.sl_min, args.sl_max, step=args.sl_step)
     tp = trial.suggest_float("tp", args.tp_min, args.tp_max, step=args.tp_step)
+
+    psar_enabled = bool(getattr(args, "psar_enabled", False))
+    if psar_enabled:
+        psar_enabled = trial.suggest_categorical("psar_enabled", [False, True])
+        psar_max = trial.suggest_float("psar_max", 0.05, 0.5, step=0.05)
+        psar_step = trial.suggest_float("psar_step", 0.001, 0.01, step=0.001)
+    else:
+        psar_max = float(getattr(args, "psar_max", 0.1))
+        psar_step = float(getattr(args, "psar_step", 0.005))
+
     delay_open = trial.suggest_int("delay_open", args.delay_open_min, args.delay_open_max, step=args.delay_open_step)
     holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
@@ -108,6 +126,9 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     return StrategyParams(
         sl=sl,
         tp=tp,
+        psar_enabled=psar_enabled,
+        psar_step=psar_step,
+        psar_max=psar_max,
         delay_open=delay_open,
         holding_minutes=holding_minutes,
         indicator_config=indicator_config,

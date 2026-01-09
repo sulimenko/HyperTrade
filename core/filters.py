@@ -4,15 +4,24 @@ def filters(row, params) -> bool:
     ema_cfg = params.indicator_config.get("ema")
     if ema_cfg and ema_cfg[0]:
         _, sign, fast, slow = ema_cfg
-        col = f"ema_{fast}_{slow}"
+        fast = int(fast)
+        slow = int(slow)
 
-        # если по какой-то причине колонки нет — не торгуем
-        if col not in row or pd.isna(row[col]):
+        col_fast = f"ema_{fast}"
+        col_slow = f"ema_{slow}"
+
+        if col_fast not in row or col_slow not in row:
+            return False
+        if pd.isna(row[col_fast]) or pd.isna(row[col_slow]):
             return False
 
-        if sign == "above" and row[col] <= 0:
+        fast_v = float(row[col_fast])
+        slow_v = float(row[col_slow])
+
+        # above => fast > slow ; below => fast < slow
+        if sign == "above" and not (fast_v > slow_v):
             return False
-        elif sign == "below" and row[col] >= 0:
+        if sign == "below" and not (fast_v < slow_v):
             return False
 
     rsi_cfg = params.indicator_config.get("rsi")

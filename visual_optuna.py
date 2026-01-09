@@ -13,6 +13,11 @@ def clip_series(s: pd.Series, q_low=0.01, q_high=0.99):
     hi = s.quantile(q_high)
     return s.clip(lo, hi)
 
+def clip_series(s: pd.Series, q_low=0.01, q_high=0.99):
+    lo = s.quantile(q_low)
+    hi = s.quantile(q_high)
+    return s.clip(lo, hi)
+
 # =======================
 # LOAD
 # =======================
@@ -26,6 +31,9 @@ def load_trials(results_dir: Path) -> pd.DataFrame:
     # Только завершённые
     if "state" in df.columns:
         df = df[df["state"] == "COMPLETE"].copy()
+
+    if "value" in df.columns:
+        df = df[df["value"] > -1e8].copy()
 
     df.columns = [c.replace("params_", "") if c.startswith("params_") else c for c in df.columns]
     df.columns = [c.replace("user_attrs_", "") if c.startswith("user_attrs_") else c for c in df.columns]
@@ -90,6 +98,79 @@ def plot_box_by_flag(df: pd.DataFrame, flag: str):
     plt.show()
 
 
+def plot_exit_reason_stacked(df: pd.DataFrame):
+    need = ["value", "exit_sl_frac", "exit_tp_frac", "exit_time_exit_frac"]
+    for c in need:
+        if c not in df.columns:
+            print(f"⚠️ Column '{c}' not found (need {need}). "
+                  f"Убедись, что run_optuna пишет user_attrs_exit_*.")
+            return
+
+    # psar может отсутствовать (если psar_enabled False всегда)
+    has_psar = "exit_psar_frac" in df.columns
+
+    # Сгруппируем trials по квантилям score (чтобы было видно зависимость)
+    tmp = df.copy()
+    tmp["score_q"] = pd.qcut(tmp["value"], q=5, labels=["Q1","Q2","Q3","Q4","Q5"])
+
+    grp = tmp.groupby("score_q", observed=False).agg({
+        "exit_sl_frac": "mean",
+        "exit_tp_frac": "mean",
+        "exit_time_exit_frac": "mean",
+        "exit_psar_frac": "mean" if has_psar else "mean",
+    })
+
+    # Если psar колонки нет — уберём
+    cols = ["exit_sl_frac", "exit_tp_frac", "exit_time_exit_frac"]
+    if has_psar:
+        cols.append("exit_psar_frac")
+
+    grp = grp[cols]
+
+    # stacked bar
+    plt.figure(figsize=(9, 5))
+    bottom = None
+    x = grp.index.astype(str)
+
+    for col in cols:
+        if bottom is None:
+            plt.bar(x, grp[col].values, label=col.replace("exit_", "").replace("_frac",""))
+            bottom = grp[col].values
+        else:
+            plt.bar(x, grp[col].values, bottom=bottom, label=col.replace("exit_", "").replace("_frac",""))
+            bottom = bottom + grp[col].values
+
+    plt.ylim(0, 1.0)
+    plt.ylabel("Average exit_reason fraction")
+    plt.xlabel("Score quantile (low → high)")
+    plt.title("Exit reasons vs Score (stacked, averaged by score quantile)")
+    plt.grid(True, axis="y", alpha=0.3)
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def plot_pareto_pnl_vs_hold(df: pd.DataFrame):
+    need = ["total_pnl", "avg_hold_minutes", "value"]
+    for c in need:
+        if c not in df.columns:
+            print(f"⚠️ Column '{c}' not found (need {need}). "
+                  f"Убедись, что run_optuna пишет user_attrs_total_pnl и user_attrs_avg_hold_minutes.")
+            return
+
+    x = df["avg_hold_minutes"]
+    y = df["total_pnl"]
+    c = clip_series(df["value"])
+
+    plt.figure(figsize=(9, 6))
+    sc = plt.scatter(x, y, c=c, alpha=0.8, cmap="viridis")
+    plt.xlabel("avg_hold_minutes (fact)")
+    plt.ylabel("total_pnl")
+    plt.title("Pareto view: total_pnl vs avg_hold_minutes (color = Score, clipped)")
+    plt.grid(True)
+    plt.colorbar(sc, label="Score (clipped)")
+    plt.tight_layout()
+    plt.show()
+
 # =======================
 # PARETO (PnL vs DD)
 # =======================
@@ -119,8 +200,16 @@ def plot_hold_sanity(df: pd.DataFrame):
             print(f"⚠️ Column '{c}' not found (need {need})")
             return
 
-    x = df["holding_minutes"]
-    y = df["avg_hold_minutes"]
+    x = pd.to_numeric(df["holding_minutes"], errors="coerce")
+    y = pd.to_numeric(df["avg_hold_minutes"], errors="coerce")
+
+    m = x.notna() & y.notna()
+    x = x[m]
+    y = y[m]
+
+    if len(x) == 0:
+        print("⚠️ No valid data for hold sanity plot")
+        return
 
     plt.figure(figsize=(7, 6))
     plt.scatter(x, y, alpha=0.6)
@@ -132,7 +221,7 @@ def plot_hold_sanity(df: pd.DataFrame):
 
     plt.xlabel("holding_minutes (param)")
     plt.ylabel("avg_hold_minutes (fact)")
-    plt.title("Hold sanity check: avg_hold_minutes vs holding_minutes")
+    plt.title("Sanity: avg_hold_minutes vs holding_minutes (y=x)")
     plt.grid(True)
     plt.tight_layout()
     plt.show()
@@ -232,6 +321,9 @@ def main():
     # Pareto (если в user_attrs сохранены total_pnl и max_drawdown)
     plot_pareto_pnl_dd(df)
 
+    # Pareto: pnl vs avg hold
+    plot_pareto_pnl_vs_hold(df)
+
     plot_hold_sanity(df)
 
     # 3D
@@ -240,6 +332,9 @@ def main():
 
     # 4D bubble
     plot_bubble_sl_tp(df)
+
+     # Exit reasons vs score
+    plot_exit_reason_stacked(df)
 
 
 if __name__ == "__main__":

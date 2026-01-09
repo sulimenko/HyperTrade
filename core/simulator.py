@@ -10,7 +10,7 @@ from core.filters import filters
 # Constants / Enums
 # =====================
 
-EXIT_REASON = {0: "sl", 1: "tp", 2: "time_exit"}
+EXIT_REASON = {0: "sl", 1: "tp", 2: "time_exit", 3: "psar"}
 
 DT    = 0
 OPEN  = 1
@@ -31,9 +31,17 @@ def simulate_trade_core(
     direction,
     sl_pct,
     tp_pct,
+    psar_enabled,
+    psar_step,
+    psar_max,
     slippage,
     commission
 ):
+        # prices
+    entry_open = ohlc[entry_idx, 0]
+    entry_high = ohlc[entry_idx, 1]
+    entry_low  = ohlc[entry_idx, 2]
+
     entry_price = ohlc[entry_idx, 0] * (1.0 + slippage * direction)
 
     if direction == LONG:
@@ -49,6 +57,27 @@ def simulate_trade_core(
     exit_idx = entry_idx
     reason = 2
 
+    # --- PSAR state (per-trade, starts at entry) ---
+    psar = 0.0
+    ep = 0.0
+    af = psar_step
+    bull = True
+
+    prev_low1 = entry_low
+    prev_low2 = entry_low
+    prev_high1 = entry_high
+    prev_high2 = entry_high
+
+    if psar_enabled:
+        if direction == LONG:
+            bull = True
+            psar = entry_low
+            ep = entry_high
+        else:
+            bull = False
+            psar = entry_high
+            ep = entry_low
+
     for i in range(entry_idx + 1, ohlc.shape[0]):
         ts = dt_ns[i]
         o  = ohlc[i, 0]
@@ -62,6 +91,59 @@ def simulate_trade_core(
             exit_idx = i
             reason = 2
             break
+
+        # ---------- UPDATE PSAR ----------
+        if psar_enabled:
+            # PSAR base update
+            psar = psar + af * (ep - psar)
+
+            if bull:
+                # constrain below last two lows
+                if psar > prev_low1:
+                    psar = prev_low1
+                if psar > prev_low2:
+                    psar = prev_low2
+
+                # reversal
+                if l <= psar:
+                    bull = False
+                    psar = ep
+                    ep = l
+                    af = psar_step
+                    # exit this bar at stop level (gap-aware)
+                    exit_price = min(psar, o)
+                    exit_idx = i
+                    reason = 3
+                    break
+                else:
+                    # update EP/AF
+                    if h > ep:
+                        ep = h
+                        af = af + psar_step
+                        if af > psar_max:
+                            af = psar_max
+            else:
+                # bear: constrain above last two highs
+                if psar < prev_high1:
+                    psar = prev_high1
+                if psar < prev_high2:
+                    psar = prev_high2
+
+                if h >= psar:
+                    bull = True
+                    psar = ep
+                    ep = h
+                    af = psar_step
+                    exit_price = max(psar, o)
+                    exit_idx = i
+                    reason = 3
+                    break
+                else:
+                    if l < ep:
+                        ep = l
+                        af = af + psar_step
+                        if af > psar_max:
+                            af = psar_max
 
         # ---------- DIRECTIONAL CANDLE MODEL ----------
         bullish = c >= o
@@ -117,6 +199,12 @@ def simulate_trade_core(
                     exit_idx = i
                     reason = 1
                     break
+        
+        # update prev extrema for PSAR constraints
+        prev_low2 = prev_low1
+        prev_low1 = l
+        prev_high2 = prev_high1
+        prev_high1 = h
 
     # ---------- APPLY SLIPPAGE + COMMISSION ----------
     exit_price = exit_price * (1.0 - slippage * direction)
@@ -126,7 +214,7 @@ def simulate_trade_core(
 
     return pnl, entry_price, exit_price, exit_idx, reason
 
-def simulate_trade(symbol, signal_time, params, ohlc):
+def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG):
     try:
         
         entry_dt = compute_entry_time(signal_time,params.delay_open)
@@ -138,8 +226,6 @@ def simulate_trade(symbol, signal_time, params, ohlc):
         if not filters(ohlc.iloc[entry_idx], params):
             return {"symbol": symbol, "rejected": True, "reject_reason": "indicators_filter_failed"}
 
-        direction = LONG  # currently only LONG trades are supported
-
         dt_ns = ohlc["datetime"].values.astype("datetime64[ns]").astype(np.int64)
 
         ohlc_np = np.column_stack([
@@ -150,7 +236,7 @@ def simulate_trade(symbol, signal_time, params, ohlc):
         ]).astype(np.float64)
 
         entry_ts = np.int64(entry_dt.value)
-        holding_ns = np.int64(params.holding_minutes * 60 * 1e9)
+        holding_ns = np.int64(params.holding_minutes * 60_000_000_000)
         
         pnl, entry_price, exit_price, exit_idx, reason = simulate_trade_core(
             dt_ns,
@@ -161,6 +247,9 @@ def simulate_trade(symbol, signal_time, params, ohlc):
             direction,
             params.sl,
             params.tp,
+            params.psar_enabled,
+            params.psar_step,
+            params.psar_max,
             params.slippage,
             params.commission
         )
@@ -171,6 +260,7 @@ def simulate_trade(symbol, signal_time, params, ohlc):
 
         return {
             "symbol": symbol,
+            "direction": int(direction),
             "entry_dt": entry_dt,
             "exit_dt": exit_dt,
             "entry_price": float(entry_price),

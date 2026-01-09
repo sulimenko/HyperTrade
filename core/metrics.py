@@ -173,6 +173,8 @@ def objective_variant_a(
     instability = _safe_float(summary.get("instability", 0.0), 0.0)
     trades    = _safe_int(summary.get("trades", 0), 0)
     avg_hold = _safe_float(summary.get("avg_hold_minutes", 0.0), 0.0)
+    expectancy = _safe_float(summary.get("expectancy", 0.0), 0.0)
+    profit_factor = _safe_float(summary.get("profit_factor", 0.0), 0.0)
 
     # --- Hard gates ---
     min_total_pnl = _safe_float(gates.get("min_total_pnl", 0.0), 0.0)
@@ -192,14 +194,19 @@ def objective_variant_a(
     cvar_pen = abs(cvar_5)
 
     score = 0.0
-    score += log1p_pos(total_pnl)
-    score += 0.6 * log1p_pos(max(0.0, calmar))
+    score += 1.25 * log1p_pos(total_pnl)
+    score += 0.50 * log1p_pos(max(0.0, calmar))
+
+    # качество входа/фильтра
+    score += 0.70 * log1p_pos(max(0.0, expectancy))
+    score += 0.25 * clamp(profit_factor, 0.0, 5.0)
+
     score += 0.4 * clamp(sharpe_t,  -2.0, 4.0)
     score += 0.4 * clamp(sortino_t, -2.0, 6.0)
-    score += 0.6 * stability_good
+    score += 0.45 * stability_good
 
-    score -= 0.9 * log1p_pos(max_dd)
-    score -= 0.6 * log1p_pos(cvar_pen)
+    score -= 0.70 * log1p_pos(max_dd)
+    score -= 0.60 * log1p_pos(cvar_pen)
 
     # Мягкий контроль trades вокруг таргета
     score -= 0.25 * abs(math.log1p(trades) - math.log1p(max(1, trades_target)))
