@@ -24,18 +24,20 @@
       "request": "launch",
       "program": "${workspaceFolder}/run_optuna.py",
       "args": [
-        "--signals=data/signals/PF20240393.csv",
+        "--signals=data/signals/PF20250597.csv",
         "--sl_min=3.0",
-        "--sl_max=15.0",
+        "--sl_max=8.0",
         "--tp_min=4.0",
-        "--tp_max=20.0",
-        "--psar_enabled=True",
-        "--delay_open_min=0",
+        "--tp_max=12.0",
+        "--psar_enabled=False",
+        "--ts_enabled=False",
+        "--rsi_enabled=False",
+        "--ema_enabled=False",
         "--delay_open_max=0",
-        "--holding_minutes_min=300",
+        "--holding_minutes_min=360",
         "--holding_minutes_max=2880",
-        "--holding_minutes_step=60",
-        "--n_trials=300"
+        "--holding_minutes_step=360",
+        "--n_trials=500"
       ],
       "console": "integratedTerminal",
       "justMyCode": false

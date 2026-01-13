@@ -1,11 +1,11 @@
-import json
 import pandas as pd
 from pathlib import Path
 from datetime import datetime
 
 RESULT_PATH = Path("results")
 
-def _result_file(kind="optuna") -> str:
+
+def _result_dir(kind: str) -> Path:
     ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
     path = RESULT_PATH / kind / ts
     path.mkdir(parents=True, exist_ok=True)
@@ -28,8 +28,9 @@ def _to_jsonable(x):
 
     return x
 
+
 def save_optimization_results(study):
-    path = _result_file("optuna")
+    path = _result_dir("optuna")
 
     df = study.trials_dataframe(
         attrs=(
@@ -43,14 +44,21 @@ def save_optimization_results(study):
             "user_attrs",
         )
     )
+
     for col in df.columns:
         df[col] = df[col].apply(_to_jsonable)
 
     df.to_csv(path / "trials.csv", index=False)
 
-    df_sorted = df[df["state"] == "COMPLETE"].sort_values("value", ascending=False)
-    top = df_sorted.head(max(1, int(len(df) * 0.1)))
-    top.to_csv(path / "top_trials.csv", index=False)
+    if "state" in df.columns:
+        df_ok = df[df["state"] == "COMPLETE"].copy()
+    else:
+        df_ok = df.copy()
+
+    if "value" in df_ok.columns and len(df_ok):
+        df_sorted = df_ok.sort_values("value", ascending=False)
+        top = df_sorted.head(max(1, int(len(df_sorted) * 0.1)))
+        top.to_csv(path / "top_trials.csv", index=False)
 
     best = study.best_trial
     best_row = {
@@ -62,7 +70,7 @@ def save_optimization_results(study):
 
     print(f"\n✅ Optuna results saved to: {path}")
 
-def save_csv(df, name):
-    path = _result_file("single")
+def save_csv(df, name: str):
+    path = _result_dir("single")
     df.to_csv(path / name, index=False)
-
+    print(f"\n✅ Single results saved to: {path / name}")

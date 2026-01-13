@@ -51,7 +51,7 @@ def objective(trial: optuna.trial.Trial, args, signals):
 
     try:
         total = 0
-        sl_n = tp_n = time_n = psar_n = 0
+        sl_n = tp_n = ts_n = time_n = psar_n = 0
 
         for t in trades:
             if t.get("rejected"):
@@ -64,6 +64,8 @@ def objective(trial: optuna.trial.Trial, args, signals):
                 sl_n += 1
             elif r == "tp":
                 tp_n += 1
+            elif r == "ts":
+                ts_n += 1
             elif r == "time_exit":
                 time_n += 1
             elif r == "psar":
@@ -121,10 +123,14 @@ def run():
     parser.add_argument("--tp_max", type=float, default=15.0)
     parser.add_argument("--tp_step", type=float, default=0.5)
 
-    parser.add_argument("--psar_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--psar_use", type=str_to_bool, default=False)
     parser.add_argument("--psar_step", type=float, default=0.02)
     parser.add_argument("--psar_max", type=float, default=0.2)
 
+    parser.add_argument("--ts_use", type=str_to_bool, default=False)
+    parser.add_argument("--ts_dist", type=float, default=2.0)
+    parser.add_argument("--ts_step", type=float, default=0.5)
+    
     parser.add_argument("--delay_open_min", type=int, default=0)
     parser.add_argument("--delay_open_max", type=int, default=600)
     parser.add_argument("--delay_open_step", type=int, default=30)
@@ -133,8 +139,8 @@ def run():
     parser.add_argument("--holding_minutes_max", type=int, default=60*24*4)
     parser.add_argument("--holding_minutes_step", type=int, default=60*3)
 
-    parser.add_argument("--ema_enabled", type=str_to_bool, default=False)
-    parser.add_argument("--rsi_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--ema_use", type=str_to_bool, default=False)
+    parser.add_argument("--rsi_use", type=str_to_bool, default=False)
 
     parser.add_argument("--n_trials", type=int, default=300)
 
@@ -158,9 +164,10 @@ def run():
     # optuna.logging.disable_default_handler()
 
     sampler = optuna.samplers.TPESampler(
-        n_startup_trials=30,   # минимум случайных
-        multivariate=True,     # учитывает связи параметров
-        group=True,            # группирует параметры
+        n_startup_trials=40, # минимум случайных
+        multivariate=True, # учитывает связи параметров
+        n_ei_candidates=64,
+        group=True,
         consider_prior=True,
         consider_magic_clip=True,
         constant_liar=True,
@@ -171,7 +178,7 @@ def run():
     # study.optimize(make_objective(args), n_trials=args.n_trials)
     study.optimize(
         lambda t: objective(t, args, signals), 
-        callbacks=[EarlyStopper(patience=50, warmup=40)], 
+        callbacks=[EarlyStopper(patience=60, warmup=40)], 
         n_trials=args.n_trials
     )
 

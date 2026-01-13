@@ -1,4 +1,5 @@
-dotenv
+python-dotenv
+requests
 pyarrow
 argparse
 pandas
@@ -6,5 +7,7 @@ numba
 numpy
 scipy
 matplotlib
+exchange_calendars
+mplcursors
 optuna
 ta

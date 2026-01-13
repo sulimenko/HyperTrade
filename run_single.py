@@ -17,19 +17,23 @@ def main(save=True):
     parser.add_argument("--sl", type=float, default=2.5)
     parser.add_argument("--tp", type=float, default=4.0)
 
-    parser.add_argument("--psar_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--psar_use", type=str_to_bool, default=False)
     parser.add_argument("--psar_step", type=float, default=0.02)
     parser.add_argument("--psar_max", type=float, default=0.2)
+
+    parser.add_argument("--ts_use", type=str_to_bool, default=False)
+    parser.add_argument("--ts_dist", type=float, default=2.0)
+    parser.add_argument("--ts_step", type=float, default=0.5)
 
     parser.add_argument("--delay_open", type=int, default=120)
     parser.add_argument("--holding_minutes", type=int, default=60*24*3)
 
-    parser.add_argument("--ema_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--ema_use", type=str_to_bool, default=False)
     parser.add_argument("--ema_sign", type=str, default="above")
     parser.add_argument("--ema_fast", type=int, default=20)
     parser.add_argument("--ema_slow", type=int, default=60)
 
-    parser.add_argument("--rsi_enabled", type=str_to_bool, default=False)
+    parser.add_argument("--rsi_use", type=str_to_bool, default=False)
     parser.add_argument("--rsi_sign", type=str, default="above")
     parser.add_argument("--rsi_level", type=int, default=50)
     parser.add_argument("--rsi_period", type=int, default=18)

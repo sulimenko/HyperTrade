@@ -130,6 +130,7 @@ def _compute_avg_hold_minutes(df: pd.DataFrame) -> float:
     if "hold_minutes" in df.columns:
         x = pd.to_numeric(df["hold_minutes"], errors="coerce")
         x = x.replace([np.inf, -np.inf], np.nan).dropna()
+        x = x[x >= 0]
         return float(x.mean()) if len(x) else 0.0
 
     if "entry_dt" in df.columns and "exit_dt" in df.columns:
