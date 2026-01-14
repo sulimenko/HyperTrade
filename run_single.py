@@ -48,10 +48,10 @@ def main(save=True):
     metrics = compute_metrics(trades, params)
 
     if save:
-        save_csv(pd.DataFrame(trades), "trades.csv")
-        save_csv(pd.DataFrame(signal_stats), "signals.csv")
-        save_csv(pd.DataFrame([params]), "params.csv")
-        save_csv(pd.DataFrame([metrics]), "summary.csv")
+        save_csv(pd.DataFrame(trades), "trades.csv", args.signals)
+        save_csv(pd.DataFrame(signal_stats), "signals.csv", args.signals)
+        save_csv(pd.DataFrame([params]), "params.csv", args.signals)
+        save_csv(pd.DataFrame([metrics]), "summary.csv", args.signals)
 
     print("\n=== STRATEGY SUMMARY ===")
     for k, v in metrics.items():

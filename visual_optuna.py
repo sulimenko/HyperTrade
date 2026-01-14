@@ -143,6 +143,13 @@ def plot_exit_reason_stacked(df: pd.DataFrame):
 
     data = grp[cols].fillna(0.0)
 
+    row_sum = data.sum(axis=1)
+    other = (1.0 - row_sum).clip(lower=0.0)
+    if (other > 1e-6).any():
+        data["other"] = other
+        cols.append("other")
+        labels.append("other")
+    
     plt.figure(figsize=(10, 5))
     bottom = None
     x = range(len(data))

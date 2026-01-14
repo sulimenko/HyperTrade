@@ -51,7 +51,7 @@ def objective(trial: optuna.trial.Trial, args, signals):
 
     try:
         total = 0
-        sl_n = tp_n = ts_n = time_n = psar_n = 0
+        sl_n = tp_n = ts_n = time_n = psar_n = unk_n = 0
 
         for t in trades:
             if t.get("rejected"):
@@ -70,12 +70,16 @@ def objective(trial: optuna.trial.Trial, args, signals):
                 time_n += 1
             elif r == "psar":
                 psar_n += 1
+            else:
+                unk_n += 1
 
         if total > 0:
             ua["exit_sl_frac"] = sl_n / total
             ua["exit_tp_frac"] = tp_n / total
+            ua["exit_ts_frac"] = ts_n / total
             ua["exit_time_exit_frac"] = time_n / total
             ua["exit_psar_frac"] = psar_n / total
+            ua["exit_unknown_frac"] = unk_n / total
             ua["exit_total"] = total
     except Exception:
         pass
@@ -153,8 +157,8 @@ def run():
     parser.add_argument("--gate_max_drawdown", type=float, default=1e18)
 
     # penalties
-    parser.add_argument("--k_hold", type=float, default=0.35)     # штраф за log1p(avg_hold_minutes)
-    parser.add_argument("--k_delay", type=float, default=0.005)   # мягкий штраф за delay_open (предпочесть 0)
+    parser.add_argument("--k_hold", type=float, default=0.35) # штраф за log1p(avg_hold_minutes)
+    parser.add_argument("--k_delay", type=float, default=0.005) # мягкий штраф за delay_open (предпочесть 0)
     
     args = parser.parse_args()
 
@@ -183,7 +187,7 @@ def run():
     )
 
     try:
-        save_optimization_results(study)
+        save_optimization_results(study, args.signals)
     except Exception as e:
         print("⚠️ Failed to save Optuna results:", e)
 

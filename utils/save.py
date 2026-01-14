@@ -5,9 +5,20 @@ from datetime import datetime
 RESULT_PATH = Path("results")
 
 
-def _result_dir(kind: str) -> Path:
+def _signals_prefix(signals_path):
+    if not signals_path:
+        return "signals"
+    name = Path(signals_path).name
+    if not name:
+        return "signals"
+    stem = Path(name).stem
+    return stem or name
+
+
+def _result_dir(kind: str, signals_path) -> Path:
     ts = datetime.utcnow().strftime("%Y-%m-%d_%H-%M-%S")
-    path = RESULT_PATH / kind / ts
+    prefix = _signals_prefix(signals_path)
+    path = RESULT_PATH / kind / f"{prefix}_{ts}"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
@@ -29,8 +40,8 @@ def _to_jsonable(x):
     return x
 
 
-def save_optimization_results(study):
-    path = _result_dir("optuna")
+def save_optimization_results(study, signals_path):
+    path = _result_dir("optuna", signals_path)
 
     df = study.trials_dataframe(
         attrs=(
@@ -70,7 +81,7 @@ def save_optimization_results(study):
 
     print(f"\n✅ Optuna results saved to: {path}")
 
-def save_csv(df, name: str):
-    path = _result_dir("single")
+def save_csv(df, name: str, signals_path):
+    path = _result_dir("single", signals_path)
     df.to_csv(path / name, index=False)
     print(f"\n✅ Single results saved to: {path / name}")
