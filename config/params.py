@@ -4,14 +4,23 @@ from typing import Dict, List, Union, Any
 # indicator_config хранит списки фиксированной длины (для совместимости с текущим кодом)
 # ema: [enabled, sign, fast, slow]
 # rsi: [enabled, sign, level, period]
-# volume (зарезервировано): [enabled]
+# volume: [enabled, sign, period, k]
+# adx: [enabled, sign, period, min]
+# macd: [enabled, sign, fast, slow, signal]
 IndicatorValue = Union[int, float, bool, str, None]
 IndicatorConfig = Dict[str, List[IndicatorValue]]
 
 DEFAULT_INDICATOR_CONFIG: IndicatorConfig = {
-    "ema":    [False, None, None, None],
-    "rsi":    [False, None, None, None],
-    "volume": [False],
+    "ema": [False, None, None, None],
+    "rsi": [False, None, None, None],
+    "volume": [False, None, None, None],
+    "adx": [False, None, None, None],
+    "atr": [False, None, None, None],
+    "macd": [False, None, None, None, None],
+    "donchian": [False, None],
+    "sr": [False, None],
+    "bb": [False, None, None],
+    "vwap": [False],
 }
 
 def _copy_default_indicator_config() -> IndicatorConfig:
@@ -20,15 +29,25 @@ def _copy_default_indicator_config() -> IndicatorConfig:
 @dataclass
 class StrategyParams:
     # --- core ---
-    sl: float = 3.0
-    tp: float = 4.0
+    sl: float | None = None
+    tp: float | None = None
     delay_open: int = 0
     holding_minutes: int = 600
 
+    # --- NEW: ATR SLTP mode ---
+    atr_use: bool = False
+    # sr_lookback: int = 5000
+    atr_period: int = 14
+    atr_sl: float = 1.0
+    atr_tp: float = 1.5
+
+    donchian_pad_pct: float = 0.002
+    donchian_period: int = 5000
+
     # --- PSAR trailing stop ---
     psar_enabled: bool = False
-    psar_max: float = 0.1
-    psar_step: float = 0.005
+    psar_max: float | None = None
+    psar_step: float | None = None
 
     # --- Trailing Stop ---
     ts_enabled: bool = False
@@ -55,7 +74,6 @@ def _bool(x, default=False) -> bool:
     return bool(x)
 
 def build_single_params(args: Any) -> StrategyParams:
-    """Сбор параметров из argparse (run_single.py)."""
     indicator_config = _copy_default_indicator_config()
 
     ema_use = _bool(getattr(args, "ema_use", False))
@@ -79,11 +97,24 @@ def build_single_params(args: Any) -> StrategyParams:
             getattr(args, "rsi_period", None),
         ]
 
+    atr_use = bool(getattr(args, "atr_use", False))
+    # sr_lookback = int(getattr(args, "sr_lookback", 5000))
+    atr_period = int(getattr(args, "atr_period", 14))
+    atr_sl = float(getattr(args, "atr_sl", 0.5))
+    atr_tp = float(getattr(args, "atr_tp", 0.5))
+    if atr_use:
+        indicator_config["atr"] = [True, atr_period]
+
     return StrategyParams(
         sl=float(getattr(args, "sl", 3.0)),
         tp=float(getattr(args, "tp", 4.0)),
         delay_open=int(getattr(args, "delay_open", 0)),
         holding_minutes=int(getattr(args, "holding_minutes", 600)),
+
+        atr_use=atr_use,
+        atr_period=atr_period,
+        atr_sl=atr_sl,
+        atr_tp=atr_tp,
 
         psar_enabled=psar_use,
         psar_max=float(getattr(args, "psar_max", 0.1)),
@@ -102,41 +133,57 @@ def build_single_params(args: Any) -> StrategyParams:
 def build_optuna_params(trial, args: Any) -> StrategyParams:
     indicator_config = _copy_default_indicator_config()
 
-    sl = trial.suggest_float("sl", args.sl_min, args.sl_max, step=args.sl_step)
-    tp = trial.suggest_float("tp", args.tp_min, args.tp_max, step=args.tp_step)
+    atr_use = _bool(getattr(args, "atr_use", False))
+    trial.suggest_categorical("atr_use", [atr_use])
+    sl = tp = atr_period = atr_sl = atr_tp = None
+    if not atr_use:
+        sl = trial.suggest_float("sl", round(args.sl_min, 4), round(args.sl_max, 4), step=args.sl_step)
+        tp = trial.suggest_float("tp", round(args.tp_min, 4), round(args.tp_max, 4), step=args.tp_step)
+    else:
+        atr_sl = trial.suggest_float("atr_sl", round(float(getattr(args, "atr_sl_min", 0.5)), 4), round(float(getattr(args, "atr_sl_max", 2.0)), 4), step=round(float(getattr(args, "atr_sl_step", 0.25)), 4))
+        atr_tp = trial.suggest_float("atr_tp", round(float(getattr(args, "atr_tp_min", 0.25)), 4), round(float(getattr(args, "atr_tp_max", 1.5)), 4), step=round(float(getattr(args, "atr_tp_step", 0.25)), 4))
+        atr_period = trial.suggest_int("atr_period", int(getattr(args, "atr_period_min", 10)), int(getattr(args, "atr_period_max", 28)), step=int(getattr(args, "atr_period_step", 2)))
+        indicator_config["atr"] = [True, int(atr_period)]
 
-    delay_open = trial.suggest_int("delay_open", args.delay_open_min, args.delay_open_max, step=args.delay_open_step)
-    holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
-    
+    # --- Donchian gate/use ---
+    donchian_use = _bool(getattr(args, "donchian_use", False))
+    donchian_period = None
+    if donchian_use:
+        donchian_enabled = trial.suggest_categorical("donchian_enabled", [False, True])
+        if donchian_enabled:
+            donchian_period = trial.suggest_categorical("donchian_period", [2000, 5000])
+            indicator_config["donchian"] = [True, int(donchian_period)]
+    else:
+        donchian_enabled = trial.suggest_categorical("donchian_enabled", [False])
+
     # --- PSAR gate/use ---
     psar_use = _bool(getattr(args, "psar_use", False))
+    psar_max = psar_step = None
     if psar_use:
         psar_enabled = trial.suggest_categorical("psar_enabled", [False, True])
-        psar_max = trial.suggest_float("psar_max", 0.05, 0.5, step=0.05)
-        psar_step = trial.suggest_float("psar_step", 0.001, 0.01, step=0.001)
+        if psar_enabled:
+            psar_max = trial.suggest_float("psar_max", 0.05, 0.5, step=0.05)
+            psar_step = trial.suggest_float("psar_step", 0.001, 0.01, step=0.001) 
     else:
-        psar_enabled = False
-        trial.suggest_categorical("psar_enabled", [False])
-        psar_max = float(getattr(args, "psar_max", 0.1))
-        psar_step = float(getattr(args, "psar_step", 0.005))
+        psar_enabled = trial.suggest_categorical("psar_enabled", [False])
 
     # --- TS gate/use ---
     ts_use = _bool(getattr(args, "ts_use", False))
+    ts_dist = ts_step = None
     if ts_use:
         ts_enabled = trial.suggest_categorical("ts_enabled", [False, True])
-        ts_step = float(getattr(args, "ts_step", 0.5))
-        ts_dist = trial.suggest_float("ts_dist", 0.5, 5.0, step=ts_step)
+        if ts_enabled:
+            ts_step = round(float(getattr(args, "ts_step", 0.5)), 4)
+            ts_dist = trial.suggest_float("ts_dist", 0.5, 5.0, step=ts_step)
     else:
-        ts_enabled = False
-        trial.suggest_categorical("ts_enabled", [False])
-        ts_step = float(getattr(args, "ts_step", 0.5))
-        ts_dist = float(getattr(args, "ts_dist", 2.0))
+        ts_enabled = trial.suggest_categorical("ts_enabled", [False])
 
     delay_open = trial.suggest_int("delay_open", args.delay_open_min, args.delay_open_max, step=args.delay_open_step)
     holding_minutes = trial.suggest_int("holding_minutes", args.holding_minutes_min, args.holding_minutes_max, step=args.holding_minutes_step)
 
     # --- EMA gate/use ---
     ema_use = _bool(getattr(args, "ema_use", False))
+    ema_sign = ema_fast = ema_slow = None
     if ema_use:
         ema_enabled = trial.suggest_categorical("ema_enabled", [False, True])
         if ema_enabled:
@@ -147,11 +194,11 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
                 ema_fast = max(5, min(int(ema_fast), int(ema_slow) - 1))
             indicator_config["ema"] = [True, ema_sign, int(ema_fast), int(ema_slow)]
     else:
-        trial.suggest_categorical("ema_enabled", [False])
-
+        ema_enabled = trial.suggest_categorical("ema_enabled", [False])
 
     # --- RSI gate/use ---
     rsi_use = _bool(getattr(args, "rsi_use", False))
+    rsi_sign = rsi_period = rsi_level = None
     if rsi_use:
         rsi_enabled = trial.suggest_categorical("rsi_enabled", [False, True])
         if rsi_enabled:
@@ -160,13 +207,93 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
             rsi_level = trial.suggest_int("rsi_level", 20, 80, step=10)
             indicator_config["rsi"] = [True, rsi_sign, int(rsi_level), int(rsi_period)]
     else:
-        trial.suggest_categorical("rsi_enabled", [False])
+        rsi_enabled = trial.suggest_categorical("rsi_enabled", [False])
+
+    # # --- ADX ---
+    # adx_use = _bool(getattr(args, "adx_use", False))
+    # if adx_use:
+    #     adx_enabled = trial.suggest_categorical("adx_enabled", [False, True])
+    #     if adx_enabled:
+    #         adx_sign = trial.suggest_categorical("adx_sign", ["trend", "range"])
+    #         adx_period = trial.suggest_int("adx_period", 10, 28, step=2)
+    #         adx_min = trial.suggest_float("adx_min", 10.0, 30.0, step=2.0)
+    #         indicator_config["adx"] = [True, adx_sign, float(adx_min), int(adx_period)]
+    # else:
+    #     adx_enabled = trial.suggest_categorical("adx_enabled", [False])
+
+    # # --- MACD ---
+    # macd_use = _bool(getattr(args, "macd_use", False))
+    # if macd_use:
+    #     macd_enabled = trial.suggest_categorical("macd_enabled", [False, True])
+    #     if macd_enabled:
+    #         macd_sign = trial.suggest_categorical("macd_sign", ["above", "below"])
+    #         macd_fast = trial.suggest_int("macd_fast", 8, 20, step=2)
+    #         macd_slow = trial.suggest_int("macd_slow", 18, 40, step=2)
+    #         macd_signal = trial.suggest_int("macd_signal", 5, 15, step=1)
+    #         if macd_fast >= macd_slow:
+    #             macd_fast = max(2, min(int(macd_fast), int(macd_slow) - 1))
+    #         indicator_config["macd"] = [True, macd_sign, int(macd_fast), int(macd_slow), int(macd_signal)]
+    # else:
+    #     macd_enabled = trial.suggest_categorical("macd_enabled", [False])
+
+    # # --- Bollinger Bands ---
+    # bb_use = _bool(getattr(args, "bb_use", False))
+    # bb_period = bb_std = None
+    # if bb_use:
+    #     bb_enabled = trial.suggest_categorical("bb_enabled", [False, True])
+    #     if bb_enabled:
+    #         bb_period = trial.suggest_int("bb_period", 10, 40, step=5)
+    #         bb_std = trial.suggest_float("bb_std", 1.5, 3.0, step=0.5)
+    #         indicator_config["bb"] = [True, int(bb_period), float(bb_std)]
+    # else:
+    #     bb_enabled = trial.suggest_categorical("bb_enabled", [False])
+
+    # # --- VWAP ---
+    # vwap_use = _bool(getattr(args, "vwap_use", False))
+    # if vwap_use:
+    #     vwap_enabled = trial.suggest_categorical("vwap_enabled", [False, True])
+    #     if vwap_enabled:
+    #         indicator_config["vwap"] = [True]
+    # else:
+    #     vwap_enabled = trial.suggest_categorical("vwap_enabled", [False])
+
+    # # --- Volume filters ---
+    # volume_use = _bool(getattr(args, "volume_use", False))
+    # if volume_use:
+    #     volume_enabled = trial.suggest_categorical("volume_enabled", [False, True])
+    #     if volume_enabled:
+    #         vol_sign = trial.suggest_categorical("volume_sign", ["above", "below"])
+    #         vol_ma = trial.suggest_int("vol_ma_period", 10, 60, step=10)
+    #         vol_k = trial.suggest_float("vol_k", 0.5, 2.0, step=0.25)
+    #         indicator_config["volume"] = [True, vol_sign, int(vol_ma), round(float(vol_k), 4)]
+    # else:
+    #     volume_enabled = trial.suggest_categorical("volume_enabled", [False])
+
+    # # --- SR pivots/fractals ---
+    # sr_use = _bool(getattr(args, "sr_use", False))
+    # sr_left = None
+    # if sr_use:
+    #     sr_enabled = trial.suggest_categorical("sr_enabled", [False, True])
+    #     if sr_enabled:
+    #         # left/right can be same for now; simplest pivot strength
+    #         sr_left = trial.suggest_int("sr_left", 2, 6, step=1)
+    #         indicator_config["sr"] = [True, int(sr_left)]
+    # else:
+    #     sr_enabled = trial.suggest_categorical("sr_enabled", [False])
 
     return StrategyParams(
         sl=sl,
         tp=tp,
         delay_open=delay_open,
         holding_minutes=holding_minutes,
+
+        atr_use=atr_use,
+        # sr_lookback=sr_lookback,
+        atr_period=atr_period,
+        atr_sl=atr_sl,
+        atr_tp=atr_tp,
+
+        donchian_period=donchian_period,
 
         psar_enabled=psar_enabled,
         psar_step=psar_step,

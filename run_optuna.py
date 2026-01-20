@@ -127,6 +127,22 @@ def run():
     parser.add_argument("--tp_max", type=float, default=15.0)
     parser.add_argument("--tp_step", type=float, default=0.5)
 
+    parser.add_argument("--atr_use", type=str_to_bool, default=False)
+    parser.add_argument("--donchian_use", type=str_to_bool, default=False)
+    parser.add_argument("--donchian_period", type=int, default=5000)
+    # parser.add_argument("--sr_lookback", type=int, default=5000)
+    parser.add_argument("--atr_period_min", type=int, default=10)
+    parser.add_argument("--atr_period_max", type=int, default=28)
+    parser.add_argument("--atr_period_step", type=int, default=2)
+
+    parser.add_argument("--atr_sl_min", type=float, default=0.75)
+    parser.add_argument("--atr_sl_max", type=float, default=3.0)
+    parser.add_argument("--atr_sl_step", type=float, default=0.25)
+
+    parser.add_argument("--atr_tp_min", type=float, default=0.5)
+    parser.add_argument("--atr_tp_max", type=float, default=3.0)
+    parser.add_argument("--atr_tp_step", type=float, default=0.25)
+
     parser.add_argument("--psar_use", type=str_to_bool, default=False)
     parser.add_argument("--psar_step", type=float, default=0.02)
     parser.add_argument("--psar_max", type=float, default=0.2)
@@ -145,6 +161,12 @@ def run():
 
     parser.add_argument("--ema_use", type=str_to_bool, default=False)
     parser.add_argument("--rsi_use", type=str_to_bool, default=False)
+    parser.add_argument("--adx_use", type=str_to_bool, default=False)
+    parser.add_argument("--macd_use", type=str_to_bool, default=False)
+    parser.add_argument("--bb_use", type=str_to_bool, default=False)
+    parser.add_argument("--vwap_use", type=str_to_bool, default=False)
+    parser.add_argument("--volume_use", type=str_to_bool, default=False)
+    parser.add_argument("--sr_use", type=str_to_bool, default=False)
 
     parser.add_argument("--n_trials", type=int, default=300)
 

@@ -36,7 +36,12 @@ def load_trials(results_dir: Path) -> pd.DataFrame:
     df.columns = [c.replace("params_", "") if c.startswith("params_") else c for c in df.columns]
     df.columns = [c.replace("user_attrs_", "ua_") if c.startswith("user_attrs_") else c for c in df.columns]
 
-    for b in ("ema_enabled", "rsi_enabled", "psar_enabled", "ts_enabled"):
+    bool_cols = (
+        "ema_enabled", "rsi_enabled", "psar_enabled", "ts_enabled",
+        "atr_use", "donchian_enabled", "volume_enabled",
+        "adx_enabled", "macd_enabled", "bb_enabled", "vwap_enabled", "sr_enabled",
+    )
+    for b in bool_cols:
         if b in df.columns:
             s = df[b]
             if s.dtype == object:
@@ -67,7 +72,6 @@ def plot_score_by_trial(df: pd.DataFrame):
     plt.tight_layout()
     plt.show()
 
-
 def plot_param_2d(df: pd.DataFrame, param: str):
     if param not in df.columns or "value" not in df.columns:
         print(f"⚠️ Param '{param}' not found")
@@ -83,13 +87,11 @@ def plot_param_2d(df: pd.DataFrame, param: str):
     plt.tight_layout()
     plt.show()
 
-
 def plot_box_by_flag(df: pd.DataFrame, flag: str):
     if flag not in df.columns or "value" not in df.columns:
         print(f"⚠️ Flag '{flag}' not found")
         return
 
-    # группируем только по True/False
     sub = df[df[flag].isin([True, False])].copy()
     if sub.empty:
         print(f"⚠️ No boolean data for '{flag}'")
@@ -104,7 +106,6 @@ def plot_box_by_flag(df: pd.DataFrame, flag: str):
     plt.grid(True, axis="y", alpha=0.3)
     plt.tight_layout()
     plt.show()
-
 
 def plot_exit_reason_stacked(df: pd.DataFrame):
     need = ["value", "ua_exit_sl_frac", "ua_exit_tp_frac", "ua_exit_time_exit_frac"]
@@ -264,14 +265,6 @@ def plot_hold_sanity(df: pd.DataFrame):
     y = _as_num(df["ua_avg_hold_minutes"])
     c = clip_series(df["value"]) if "value" in df.columns else None
 
-    # m = x.notna() & y.notna()
-    # x = x[m]
-    # y = y[m]
-
-    # if len(x) == 0:
-    #     print("⚠️ No valid data for hold sanity plot")
-    #     return
-
     plt.figure(figsize=(7, 6))
     sc = plt.scatter(x, y, c=c, alpha=0.6)
 
@@ -301,10 +294,10 @@ def plot_hold_sanity(df: pd.DataFrame):
     plt.tight_layout()
     plt.show()
 
-
 # =======================
 # 3D PLOTS
 # =======================
+
 def plot_3d(df: pd.DataFrame, x: str, y: str, z: str = "value"):
     for c in (x, y, z):
         if c not in df.columns:
@@ -337,38 +330,49 @@ def plot_3d(df: pd.DataFrame, x: str, y: str, z: str = "value"):
 
 
 # =======================
-# 4D Bubble: sl vs tp (size=avg_hold, color=score)
+# 4D Bubble: x vs y (size=avg_hold, color=score)
+# (оставили ту же идею, но x/y выбираем в main)
 # =======================
-def plot_bubble_sl_tp(df: pd.DataFrame):
-    need = ["sl", "tp", "ua_avg_hold_minutes", "value"]
+
+def plot_bubble(df: pd.DataFrame, xcol: str, ycol: str, title: str):
+    need = [xcol, ycol, "ua_avg_hold_minutes", "value"]
     for c in need:
         if c not in df.columns:
             print(f"⚠️ Column '{c}' not found (need {need})")
             return
 
-    x = df["sl"]
-    y = df["tp"]
-    score = df["value"]
-    hold = df["ua_avg_hold_minutes"]
+    x = _as_num(df[xcol])
+    y = _as_num(df[ycol])
+    score = _as_num(df["value"])
+    hold = _as_num(df["ua_avg_hold_minutes"])
 
-    # нормируем размер пузырей
+    m = x.notna() & y.notna() & score.notna() & hold.notna()
+    if m.sum() == 0:
+        print(f"⚠️ No valid data for bubble {xcol} vs {ycol}")
+        return
+
+    x = x[m]
+    y = y[m]
+    score = score[m]
+    hold = hold[m]
+
     hold_norm = (hold - hold.min()) / (hold.max() - hold.min() + 1e-9)
     sizes = 30 + 170 * hold_norm  # 30..200
 
     plt.figure(figsize=(9, 6))
     sc = plt.scatter(x, y, s=sizes, c=score, alpha=0.75, cmap="viridis")
-    plt.xlabel("sl")
-    plt.ylabel("tp")
-    plt.title("Bubble 4D: sl vs tp (size=avg_hold_minutes, color=Score)")
+    plt.xlabel(xcol)
+    plt.ylabel(ycol)
+    plt.title(title)
     plt.grid(True)
     plt.colorbar(sc, label="Score")
     plt.tight_layout()
     plt.show()
 
-
 # =======================
 # MAIN
 # =======================
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: python visual_optuna.py <results_dir>")
@@ -385,32 +389,48 @@ def main():
     # 2D score history
     plot_score_by_trial(df)
 
-    # 2D: score vs ключевые параметры
-    for p in ["sl", "tp", "holding_minutes", "delay_open", "psar_step", "psar_max", "ts_dist", "ts_step"]:
-        plot_param_2d(df, p)
+    # FIX: расширили перечень параметров под ATR/Donchian/Volume и т.п.
+    params_2d = [
+        "sl", "tp",
+        "atr_sl", "atr_tp", "atr_period",
+        "donchian_period",
+        "holding_minutes", "delay_open",
+        "psar_step", "psar_max", "ts_dist", "ts_step",
+    ]
+    for p in params_2d:
+        if p in df.columns:
+            plot_param_2d(df, p)
 
-    # 2D: распределение score по флагам
-    for flag in ("ema_use", "rsi_use", "psar_use", "ts_use"):
+    # FIX: флаги теперь *_enabled и новые флаги
+    flags = [
+        "atr_use",
+        "donchian_enabled",
+        "ema_enabled", "rsi_enabled", "psar_enabled", "ts_enabled",
+        "adx_enabled", "macd_enabled", "bb_enabled", "vwap_enabled",
+        "volume_enabled", "sr_enabled",
+    ]
+    for flag in flags:
         if flag in df.columns:
-                plot_box_by_flag(df, flag)
+            plot_box_by_flag(df, flag)
 
-    # Pareto (если в user_attrs сохранены total_pnl и max_drawdown)
+    # Pareto
     plot_pareto_pnl_dd(df)
-
-    # Pareto: pnl vs avg hold
     plot_pareto_pnl_vs_hold(df)
-
     plot_hold_sanity(df)
 
     # Exit reasons vs score
     plot_exit_reason_stacked(df)
 
-    # 3D
-    plot_3d(df, "sl", "tp", "value")
-    # plot_3d(df, "holding_minutes", "delay_open", "value")
-
-    # 4D bubble
-    plot_bubble_sl_tp(df)
+    # FIX: 3D и bubble выбираем под режим.
+    # Если есть sl/tp — рисуем sl/tp; иначе (ATR) — atr_sl/atr_tp.
+    if "sl" in df.columns and "tp" in df.columns and df["sl"].notna().any() and df["tp"].notna().any():
+        plot_3d(df, "sl", "tp", "value")
+        plot_bubble(df, "sl", "tp", "Bubble 4D: sl vs tp (size=avg_hold_minutes, color=Score)")
+    elif "atr_sl" in df.columns and "atr_tp" in df.columns and df["atr_sl"].notna().any() and df["atr_tp"].notna().any():
+        plot_3d(df, "atr_sl", "atr_tp", "value")
+        plot_bubble(df, "atr_sl", "atr_tp", "Bubble 4D: atr_sl vs atr_tp (size=avg_hold_minutes, color=Score)")
+    else:
+        print("⚠️ No (sl,tp) or (atr_sl,atr_tp) data for 3D/bubble plots")
 
 if __name__ == "__main__":
     main()

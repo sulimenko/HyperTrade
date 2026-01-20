@@ -15,6 +15,7 @@ EXIT_REASON = {0: "sl", 1: "tp", 2: "time_exit", 3: "psar", 4: "ts"}
 LONG = 1
 SHORT = -1
 
+
 @nb.njit
 def _check_time_exit(ts, exit_deadline, o):
     if ts >= exit_deadline:
@@ -294,7 +295,8 @@ def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG, market_cac
         if entry_idx >= len(ohlc):
             return {"symbol": symbol, "rejected": True, "reject_reason": "no_candles_after_entry"}
 
-        if not filters(ohlc.iloc[entry_idx], params):
+        # if not filters(ohlc.iloc[entry_idx], params):
+        if not filters(ohlc, entry_idx, params, direction):
             return {"symbol": symbol, "rejected": True, "reject_reason": "indicators_filter_failed"}
 
         dt_ns = ohlc["datetime"].values.astype("datetime64[ns]").astype(np.int64)
@@ -315,21 +317,74 @@ def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG, market_cac
             ohlc["close"].values,
         ]).astype(np.float64)
 
+        entry_open = float(ohlc.iloc[entry_idx]["open"])
+        entry_price_for_levels = entry_open * (1.0 + float(params.slippage) * float(direction))
+
+        if bool(getattr(params, "atr_use", False)):
+            # ATR обязателен
+            atr_period = int(getattr(params, "atr_period", 14))
+            atr_col = f"atr_{atr_period}"
+            if atr_col not in ohlc.columns:
+                return {"symbol": symbol, "rejected": True, "reject_reason": f"missing_{atr_col}"}
+
+            atr_v = float(ohlc.iloc[entry_idx][atr_col])
+            if not np.isfinite(atr_v) or atr_v <= 0:
+                return {"symbol": symbol, "rejected": True, "reject_reason": "atr_nan_or_zero"}
+
+            atr_sl = float(getattr(params, "atr_sl", 1.0))
+            atr_tp = float(getattr(params, "atr_tp", 1.0))
+
+            # ATR-only уровни (работают без SR)
+            sl_price = entry_price_for_levels - float(direction) * atr_sl * atr_v
+            tp_price = entry_price_for_levels + float(direction) * atr_tp * atr_v
+
+            # Если Donchian включен — используем как SR-ограничитель уровней (опционально)
+            don_cfg = getattr(params, "indicator_config", {}).get("donchian")
+            if don_cfg and len(don_cfg) >= 2 and bool(don_cfg[0]):
+                don_p = int(don_cfg[1])
+                hcol = f"don_h_{don_p}"
+                lcol = f"don_l_{don_p}"
+                if hcol in ohlc.columns and lcol in ohlc.columns:
+                    don_h = ohlc.iloc[entry_idx][hcol]
+                    don_l = ohlc.iloc[entry_idx][lcol]
+                    if pd.notna(don_h) and pd.notna(don_l):
+                        pad = float(getattr(params, "don_pad_pct", 0.0))
+                        don_h = float(don_h)
+                        don_l = float(don_l)
+
+                        if direction == LONG:
+                            # SL дальше (ниже) из {ATR, support}; TP ближе (ниже) к resistance
+                            sl_price = min(sl_price, don_l * (1.0 - pad))
+                            tp_price = min(tp_price, don_h * (1.0 - pad))
+                        else:
+                            # SHORT: SL выше, TP ниже
+                            sl_price = max(sl_price, don_h * (1.0 + pad))
+                            tp_price = max(tp_price, don_l * (1.0 + pad))
+
+            # Переводим абсолютные уровни в проценты для simulate_trade_core
+            sl_pct = abs((entry_price_for_levels - sl_price) / entry_price_for_levels) * 100.0
+            tp_pct = abs((tp_price - entry_price_for_levels) / entry_price_for_levels) * 100.0
+
+        else:
+            # Старый режим: % SL/TP
+            sl_pct = float(params.sl)
+            tp_pct = float(params.tp)
+
         pnl, entry_price, exit_price, exit_idx, reason = simulate_trade_core(
             dt_ns,
             ohlc_np,
             entry_idx,
             exit_deadline_ts,
             direction,
-            params.sl,
-            params.tp,
-            params.psar_enabled,
-            params.psar_step,
-            params.psar_max,
-            params.ts_enabled,
-            float(getattr(params, "ts_dist", 1.0)),
-            params.slippage,
-            params.commission
+            sl_pct,
+            tp_pct,
+            psar_enabled=bool(getattr(params, "psar_enabled", False)),
+            psar_step=float(getattr(params, "psar_step", 0.005) or 0.005),
+            psar_max=float(getattr(params, "psar_max", 0.1) or 0.1),
+            ts_enabled=bool(getattr(params, "ts_enabled", False)),
+            ts_dist=float(getattr(params, "ts_dist", 1.0) or 1.0),
+            slippage=float(getattr(params, "slippage", 0.0)),
+            commission=float(getattr(params, "commission", 0.0))
         )
 
         exit_dt = ohlc.iloc[exit_idx]["datetime"]
