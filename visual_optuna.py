@@ -39,7 +39,7 @@ def load_trials(results_dir: Path) -> pd.DataFrame:
     bool_cols = (
         "ema_enabled", "rsi_enabled", "psar_enabled", "ts_enabled",
         "atr_use", "donchian_enabled", "volume_enabled",
-        "adx_enabled", "macd_enabled", "bb_enabled", "vwap_enabled", "sr_enabled",
+        "adx_enabled", "macd_enabled", "bb_enabled", "vwap_enabled"
     )
     for b in bool_cols:
         if b in df.columns:
@@ -407,7 +407,7 @@ def main():
         "donchian_enabled",
         "ema_enabled", "rsi_enabled", "psar_enabled", "ts_enabled",
         "adx_enabled", "macd_enabled", "bb_enabled", "vwap_enabled",
-        "volume_enabled", "sr_enabled",
+        "volume_enabled",
     ]
     for flag in flags:
         if flag in df.columns:

@@ -48,6 +48,8 @@ def backtest(signals, params):
                 )
                 # print(f"Время {symbol} ohlc + trade: {(time.time() - start_time):.4f} секунд")
                 if trade.get("rejected"):
+                    if trade.get('reject_reason') != "indicators_filter_failed":
+                        print(f"Торговля отклонена для {symbol} по причине: {trade.get('reject_reason')}")
                     rejected.append((symbol, trade["reject_reason"]))
                 else:
                     trades.append(trade)

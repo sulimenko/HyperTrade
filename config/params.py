@@ -7,6 +7,8 @@ from typing import Dict, List, Union, Any
 # volume: [enabled, sign, period, k]
 # adx: [enabled, sign, period, min]
 # macd: [enabled, sign, fast, slow, signal]
+# bb: [enabled, sign, std, period]
+# vwap: [enabled, sign, k]
 IndicatorValue = Union[int, float, bool, str, None]
 IndicatorConfig = Dict[str, List[IndicatorValue]]
 
@@ -17,10 +19,9 @@ DEFAULT_INDICATOR_CONFIG: IndicatorConfig = {
     "adx": [False, None, None, None],
     "atr": [False, None, None, None],
     "macd": [False, None, None, None, None],
+    "bb": [False, None, None, None],
     "donchian": [False, None],
-    "sr": [False, None],
-    "bb": [False, None, None],
-    "vwap": [False],
+    "vwap": [False, None, None],
 }
 
 def _copy_default_indicator_config() -> IndicatorConfig:
@@ -36,13 +37,9 @@ class StrategyParams:
 
     # --- NEW: ATR SLTP mode ---
     atr_use: bool = False
-    # sr_lookback: int = 5000
     atr_period: int = 14
     atr_sl: float = 1.0
     atr_tp: float = 1.5
-
-    donchian_pad_pct: float = 0.002
-    donchian_period: int = 5000
 
     # --- PSAR trailing stop ---
     psar_enabled: bool = False
@@ -98,7 +95,6 @@ def build_single_params(args: Any) -> StrategyParams:
         ]
 
     atr_use = bool(getattr(args, "atr_use", False))
-    # sr_lookback = int(getattr(args, "sr_lookback", 5000))
     atr_period = int(getattr(args, "atr_period", 14))
     atr_sl = float(getattr(args, "atr_sl", 0.5))
     atr_tp = float(getattr(args, "atr_tp", 0.5))
@@ -147,7 +143,6 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
 
     # --- Donchian gate/use ---
     donchian_use = _bool(getattr(args, "donchian_use", False))
-    donchian_period = None
     if donchian_use:
         donchian_enabled = trial.suggest_categorical("donchian_enabled", [False, True])
         if donchian_enabled:
@@ -183,7 +178,6 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
 
     # --- EMA gate/use ---
     ema_use = _bool(getattr(args, "ema_use", False))
-    ema_sign = ema_fast = ema_slow = None
     if ema_use:
         ema_enabled = trial.suggest_categorical("ema_enabled", [False, True])
         if ema_enabled:
@@ -198,7 +192,6 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
 
     # --- RSI gate/use ---
     rsi_use = _bool(getattr(args, "rsi_use", False))
-    rsi_sign = rsi_period = rsi_level = None
     if rsi_use:
         rsi_enabled = trial.suggest_categorical("rsi_enabled", [False, True])
         if rsi_enabled:
@@ -209,77 +202,67 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
     else:
         rsi_enabled = trial.suggest_categorical("rsi_enabled", [False])
 
-    # # --- ADX ---
-    # adx_use = _bool(getattr(args, "adx_use", False))
-    # if adx_use:
-    #     adx_enabled = trial.suggest_categorical("adx_enabled", [False, True])
-    #     if adx_enabled:
-    #         adx_sign = trial.suggest_categorical("adx_sign", ["trend", "range"])
-    #         adx_period = trial.suggest_int("adx_period", 10, 28, step=2)
-    #         adx_min = trial.suggest_float("adx_min", 10.0, 30.0, step=2.0)
-    #         indicator_config["adx"] = [True, adx_sign, float(adx_min), int(adx_period)]
-    # else:
-    #     adx_enabled = trial.suggest_categorical("adx_enabled", [False])
+    # --- ADX ---
+    adx_use = _bool(getattr(args, "adx_use", False))
+    if adx_use:
+        adx_enabled = trial.suggest_categorical("adx_enabled", [False, True])
+        if adx_enabled:
+            adx_sign = trial.suggest_categorical("adx_sign", ["trend", "range"])
+            adx_min = trial.suggest_float("adx_min", 10.0, 30.0, step=2.0)
+            adx_period = trial.suggest_int("adx_period", 10, 28, step=2)
+            indicator_config["adx"] = [True, adx_sign, float(adx_min), int(adx_period)]
+    else:
+        adx_enabled = trial.suggest_categorical("adx_enabled", [False])
 
-    # # --- MACD ---
-    # macd_use = _bool(getattr(args, "macd_use", False))
-    # if macd_use:
-    #     macd_enabled = trial.suggest_categorical("macd_enabled", [False, True])
-    #     if macd_enabled:
-    #         macd_sign = trial.suggest_categorical("macd_sign", ["above", "below"])
-    #         macd_fast = trial.suggest_int("macd_fast", 8, 20, step=2)
-    #         macd_slow = trial.suggest_int("macd_slow", 18, 40, step=2)
-    #         macd_signal = trial.suggest_int("macd_signal", 5, 15, step=1)
-    #         if macd_fast >= macd_slow:
-    #             macd_fast = max(2, min(int(macd_fast), int(macd_slow) - 1))
-    #         indicator_config["macd"] = [True, macd_sign, int(macd_fast), int(macd_slow), int(macd_signal)]
-    # else:
-    #     macd_enabled = trial.suggest_categorical("macd_enabled", [False])
+    # --- MACD ---
+    macd_use = _bool(getattr(args, "macd_use", False))
+    if macd_use:
+        macd_enabled = trial.suggest_categorical("macd_enabled", [False, True])
+        if macd_enabled:
+            macd_sign = trial.suggest_categorical("macd_sign", ["above", "below"])
+            macd_fast = trial.suggest_int("macd_fast", 8, 20, step=2)
+            macd_slow = trial.suggest_int("macd_slow", 18, 40, step=2)
+            macd_signal = trial.suggest_int("macd_signal", 5, 15, step=1)
+            if macd_fast >= macd_slow:
+                macd_fast = max(2, min(int(macd_fast), int(macd_slow) - 1))
+            indicator_config["macd"] = [True, macd_sign, int(macd_fast), int(macd_slow), int(macd_signal)]
+    else:
+        macd_enabled = trial.suggest_categorical("macd_enabled", [False])
 
-    # # --- Bollinger Bands ---
-    # bb_use = _bool(getattr(args, "bb_use", False))
-    # bb_period = bb_std = None
-    # if bb_use:
-    #     bb_enabled = trial.suggest_categorical("bb_enabled", [False, True])
-    #     if bb_enabled:
-    #         bb_period = trial.suggest_int("bb_period", 10, 40, step=5)
-    #         bb_std = trial.suggest_float("bb_std", 1.5, 3.0, step=0.5)
-    #         indicator_config["bb"] = [True, int(bb_period), float(bb_std)]
-    # else:
-    #     bb_enabled = trial.suggest_categorical("bb_enabled", [False])
+    # --- Bollinger Bands ---
+    bb_use = _bool(getattr(args, "bb_use", False))
+    if bb_use:
+        bb_enabled = trial.suggest_categorical("bb_enabled", [False, True])
+        if bb_enabled:
+            bb_sign = trial.suggest_categorical("bb_sign", ["above", "below"])
+            bb_std = trial.suggest_float("bb_std", 1.5, 3.0, step=0.5)
+            bb_period = trial.suggest_int("bb_period", 10, 40, step=5)
+            indicator_config["bb"] = [True, bb_sign, float(bb_std), int(bb_period)]
+    else:
+        bb_enabled = trial.suggest_categorical("bb_enabled", [False])
 
-    # # --- VWAP ---
-    # vwap_use = _bool(getattr(args, "vwap_use", False))
-    # if vwap_use:
-    #     vwap_enabled = trial.suggest_categorical("vwap_enabled", [False, True])
-    #     if vwap_enabled:
-    #         indicator_config["vwap"] = [True]
-    # else:
-    #     vwap_enabled = trial.suggest_categorical("vwap_enabled", [False])
+    # --- VWAP ---
+    vwap_use = _bool(getattr(args, "vwap_use", False))
+    if vwap_use:
+        vwap_enabled = trial.suggest_categorical("vwap_enabled", [False, True])
+        if vwap_enabled:
+            vwap_sign = trial.suggest_categorical("vwap_sign", ["above", "below"])
+            vwap_k = trial.suggest_float("vwap_k", 0.8, 1.20, step=0.05)
+            indicator_config["vwap"] = [True, vwap_sign, round(float(vwap_k), 4)]
+    else:
+        vwap_enabled = trial.suggest_categorical("vwap_enabled", [False, None])
 
-    # # --- Volume filters ---
-    # volume_use = _bool(getattr(args, "volume_use", False))
-    # if volume_use:
-    #     volume_enabled = trial.suggest_categorical("volume_enabled", [False, True])
-    #     if volume_enabled:
-    #         vol_sign = trial.suggest_categorical("volume_sign", ["above", "below"])
-    #         vol_ma = trial.suggest_int("vol_ma_period", 10, 60, step=10)
-    #         vol_k = trial.suggest_float("vol_k", 0.5, 2.0, step=0.25)
-    #         indicator_config["volume"] = [True, vol_sign, int(vol_ma), round(float(vol_k), 4)]
-    # else:
-    #     volume_enabled = trial.suggest_categorical("volume_enabled", [False])
-
-    # # --- SR pivots/fractals ---
-    # sr_use = _bool(getattr(args, "sr_use", False))
-    # sr_left = None
-    # if sr_use:
-    #     sr_enabled = trial.suggest_categorical("sr_enabled", [False, True])
-    #     if sr_enabled:
-    #         # left/right can be same for now; simplest pivot strength
-    #         sr_left = trial.suggest_int("sr_left", 2, 6, step=1)
-    #         indicator_config["sr"] = [True, int(sr_left)]
-    # else:
-    #     sr_enabled = trial.suggest_categorical("sr_enabled", [False])
+    # --- Volume filters ---
+    volume_use = _bool(getattr(args, "volume_use", False))
+    if volume_use:
+        volume_enabled = trial.suggest_categorical("volume_enabled", [False, True])
+        if volume_enabled:
+            vol_sign = trial.suggest_categorical("volume_sign", ["above", "below"])
+            vol_ma = trial.suggest_int("vol_ma_period", 10, 60, step=10)
+            vol_k = trial.suggest_float("vol_k", 0.5, 2.0, step=0.25)
+            indicator_config["volume"] = [True, vol_sign, int(vol_ma), round(float(vol_k), 4)]
+    else:
+        volume_enabled = trial.suggest_categorical("volume_enabled", [False])
 
     return StrategyParams(
         sl=sl,
@@ -288,12 +271,9 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
         holding_minutes=holding_minutes,
 
         atr_use=atr_use,
-        # sr_lookback=sr_lookback,
         atr_period=atr_period,
         atr_sl=atr_sl,
         atr_tp=atr_tp,
-
-        donchian_period=donchian_period,
 
         psar_enabled=psar_enabled,
         psar_step=psar_step,

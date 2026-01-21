@@ -341,14 +341,14 @@ def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG, market_cac
             # Если Donchian включен — используем как SR-ограничитель уровней (опционально)
             don_cfg = getattr(params, "indicator_config", {}).get("donchian")
             if don_cfg and len(don_cfg) >= 2 and bool(don_cfg[0]):
-                don_p = int(don_cfg[1])
-                hcol = f"don_h_{don_p}"
-                lcol = f"don_l_{don_p}"
+                _, period = don_cfg[:2]
+                hcol = f"don_h_{int(period)}"
+                lcol = f"don_l_{int(period)}"
                 if hcol in ohlc.columns and lcol in ohlc.columns:
                     don_h = ohlc.iloc[entry_idx][hcol]
                     don_l = ohlc.iloc[entry_idx][lcol]
                     if pd.notna(don_h) and pd.notna(don_l):
-                        pad = float(getattr(params, "don_pad_pct", 0.0))
+                        pad = 0.002
                         don_h = float(don_h)
                         don_l = float(don_l)
 
