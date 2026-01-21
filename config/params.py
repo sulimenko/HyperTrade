@@ -250,7 +250,7 @@ def build_optuna_params(trial, args: Any) -> StrategyParams:
             vwap_k = trial.suggest_float("vwap_k", 0.8, 1.20, step=0.05)
             indicator_config["vwap"] = [True, vwap_sign, round(float(vwap_k), 4)]
     else:
-        vwap_enabled = trial.suggest_categorical("vwap_enabled", [False, None])
+        vwap_enabled = trial.suggest_categorical("vwap_enabled", [False])
 
     # --- Volume filters ---
     volume_use = _bool(getattr(args, "volume_use", False))

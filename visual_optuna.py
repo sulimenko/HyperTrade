@@ -97,6 +97,14 @@ def plot_box_by_flag(df: pd.DataFrame, flag: str):
         print(f"⚠️ No boolean data for '{flag}'")
         return
 
+    vals_false = sub[sub[flag] == False]["value"].values
+    vals_true  = sub[sub[flag] == True]["value"].values
+
+    if len(vals_false) == 0 or len(vals_true) == 0:
+        print(f"⚠️ Skip '{flag}': one of the groups is empty "
+              f"(False={len(vals_false)}, True={len(vals_true)})")
+        return
+
     groups = [sub[sub[flag] == False]["value"].values, sub[sub[flag] == True]["value"].values]
     plt.figure(figsize=(6, 4))
     # plt.boxplot(groups, labels=[f"{flag}=False", f"{flag}=True"], showfliers=False)
