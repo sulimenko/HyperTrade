@@ -74,6 +74,7 @@ def build_single_params(args: Any) -> StrategyParams:
     indicator_config = _copy_default_indicator_config()
 
     ema_use = _bool(getattr(args, "ema_use", False))
+    macd_use = _bool(getattr(args, "macd_use", False))
     rsi_use = _bool(getattr(args, "rsi_use", False))
     psar_use = _bool(getattr(args, "psar_use", False))
     ts_use = _bool(getattr(args, "ts_use", False))
@@ -92,6 +93,15 @@ def build_single_params(args: Any) -> StrategyParams:
             getattr(args, "rsi_sign", None),
             getattr(args, "rsi_level", None),
             getattr(args, "rsi_period", None),
+        ]
+
+    if macd_use:
+        indicator_config["macd"] = [
+            True,
+            getattr(args, "macd_sign", None),
+            getattr(args, "macd_fast", None),
+            getattr(args, "macd_slow", None),
+            getattr(args, "macd_signal", None),
         ]
 
     atr_use = bool(getattr(args, "atr_use", False))

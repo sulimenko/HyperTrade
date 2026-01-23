@@ -100,6 +100,47 @@
       ],
       "console": "integratedTerminal",
       "justMyCode": false
+    },
+    { 
+      "name": "Run Optuna PF20250478",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/run_optuna.py",
+      "args": [
+        "--signals=data/signals/PF20250478.csv",
+        "--sl_min=3.0",
+        "--sl_max=7.0",
+        "--sl_step=0.5",
+        "--tp_min=4.0",
+        "--tp_max=12.0",
+        "--tp_step=0.5",
+        "--atr_use=False",
+        "--donchian_use=False",
+        "--atr_period_min=2",
+        "--atr_period_max=28",
+        "--atr_period_step=2",
+        "--atr_sl_min=0.75",
+        "--atr_sl_max=3.0",
+        "--atr_sl_step=0.25",
+        "--atr_tp_min=1.5",
+        "--atr_tp_max=5.0",
+        "--atr_tp_step=0.25",
+        "--psar_use=False",
+        "--ts_use=False",
+        "--rsi_use=False",
+        "--adx_use=False",
+        "--macd_use=False",
+        "--bb_use=False",
+        "--vwap_use=False",
+        "--volume_use=False",
+        "--delay_open_max=0",
+        "--holding_minutes_min=360",
+        "--holding_minutes_max=7200",
+        "--holding_minutes_step=360",
+        "--n_trials=500"
+      ],
+      "console": "integratedTerminal",
+      "justMyCode": false
     }
   ]
 }

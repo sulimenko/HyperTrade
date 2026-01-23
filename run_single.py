@@ -33,6 +33,12 @@ def main(save=True):
     parser.add_argument("--ema_fast", type=int, default=20)
     parser.add_argument("--ema_slow", type=int, default=60)
 
+    parser.add_argument("--macd_use", type=str_to_bool, default=False)
+    parser.add_argument("--macd_sign", type=str, default="above")
+    parser.add_argument("--macd_fast", type=int, default=12)
+    parser.add_argument("--macd_slow", type=int, default=26)
+    parser.add_argument("--macd_signal", type=int, default=6)
+
     parser.add_argument("--rsi_use", type=str_to_bool, default=False)
     parser.add_argument("--rsi_sign", type=str, default="above")
     parser.add_argument("--rsi_level", type=int, default=50)

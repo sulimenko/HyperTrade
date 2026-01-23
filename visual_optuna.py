@@ -397,6 +397,14 @@ def main():
     # 2D score history
     plot_score_by_trial(df)
 
+    # Pareto
+    plot_pareto_pnl_dd(df)
+    plot_pareto_pnl_vs_hold(df)
+    plot_hold_sanity(df)
+
+    # Exit reasons vs score
+    plot_exit_reason_stacked(df)
+
     # FIX: расширили перечень параметров под ATR/Donchian/Volume и т.п.
     params_2d = [
         "sl", "tp",
@@ -420,14 +428,6 @@ def main():
     for flag in flags:
         if flag in df.columns:
             plot_box_by_flag(df, flag)
-
-    # Pareto
-    plot_pareto_pnl_dd(df)
-    plot_pareto_pnl_vs_hold(df)
-    plot_hold_sanity(df)
-
-    # Exit reasons vs score
-    plot_exit_reason_stacked(df)
 
     # FIX: 3D и bubble выбираем под режим.
     # Если есть sl/tp — рисуем sl/tp; иначе (ATR) — atr_sl/atr_tp.

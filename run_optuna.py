@@ -37,14 +37,6 @@ def objective(trial: optuna.trial.Trial, args, signals):
     metrics = compute_metrics(
         trades,
         params,
-        objective="variant_a",
-        trades_target=args.trades_target,
-        objective_gates={
-            "min_total_pnl": args.gate_min_total_pnl,
-            "min_trades": args.gate_min_trades,
-            "max_max_drawdown": args.gate_max_drawdown,
-            "k_hold": args.k_hold,
-        },
         delay_penalty_k=args.k_delay,
     )
 
@@ -169,20 +161,19 @@ def run():
     parser.add_argument("--n_trials", type=int, default=300)
 
     # --- Objective tuning knobs ---
-    parser.add_argument("--trades_target", type=int, default=800)
+    # parser.add_argument("--trades_target", type=int, default=800)
 
     # gates for hard filtering
-    parser.add_argument("--gate_min_total_pnl", type=float, default=0.0)
-    parser.add_argument("--gate_min_trades", type=int, default=100)
-    parser.add_argument("--gate_max_drawdown", type=float, default=1e18)
+    # parser.add_argument("--gate_min_total_pnl", type=float, default=0.0)
+    # parser.add_argument("--gate_min_trades", type=int, default=30)
+    # parser.add_argument("--gate_max_drawdown", type=float, default=1e18)
 
     # penalties
-    parser.add_argument("--k_hold", type=float, default=0.35) # штраф за log1p(avg_hold_minutes)
-    parser.add_argument("--k_delay", type=float, default=0.005) # мягкий штраф за delay_open (предпочесть 0)
+    # parser.add_argument("--k_hold", type=float, default=0.35) # штраф за log1p(avg_hold_minutes)
+    # parser.add_argument("--k_delay", type=float, default=0.005) # мягкий штраф за delay_open (предпочесть 0)
     
     args = parser.parse_args()
 
-    # Загружаем сигналы один раз
     signals = load_signals(args.signals)
 
     # optuna.logging.disable_default_handler()
@@ -199,7 +190,6 @@ def run():
     )
 
     study = optuna.create_study(direction="maximize", sampler=sampler)
-    # study.optimize(make_objective(args), n_trials=args.n_trials)
     study.optimize(
         lambda t: objective(t, args, signals), 
         callbacks=[EarlyStopper(patience=60, warmup=40)], 
