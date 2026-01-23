@@ -33,7 +33,6 @@ def objective(trial: optuna.trial.Trial, args, signals):
                 pass
         return -1e9
 
-    # Считаем метрики + score (Variant A по умолчанию)
     metrics = compute_metrics(
         trades,
         params,
@@ -170,7 +169,7 @@ def run():
 
     # penalties
     # parser.add_argument("--k_hold", type=float, default=0.35) # штраф за log1p(avg_hold_minutes)
-    # parser.add_argument("--k_delay", type=float, default=0.005) # мягкий штраф за delay_open (предпочесть 0)
+    parser.add_argument("--k_delay", type=float, default=0.005) # мягкий штраф за delay_open (предпочесть 0)
     
     args = parser.parse_args()
 
