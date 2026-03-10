@@ -107,9 +107,9 @@ def compute_metrics(
 
     # --- Variant B score ---
     score = 0.0
-    score += 1.5 * _log1p_pos(total_pnl_pct)
-    score += 0.50 * _log1p_pos(max(0.0, calmar))
-    score += 0.25 * _clamp(profit_factor, 0.0, 5.0)
+    score += 1.25 * _log1p_pos(total_pnl_pct)
+    score += 0.20 * _log1p_pos(max(0.0, calmar))
+    score += 0.5 * _clamp(profit_factor, 0.0, 5.0)
 
     score -= 0.50 * _log1p_pos(max_dd_pct)
     score -= 0.70 * _log1p_pos(abs(cvar_5))
