@@ -11,3 +11,7 @@ exchange_calendars
 mplcursors
 optuna
 ta
+plotly
+streamlit
+watchdog
+PyYAML

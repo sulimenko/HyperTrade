@@ -1,10 +1,30 @@
-.conda
-/results/*
-/data/raw/*
-/data/market/*
-/data/ohlc/*
-/data/indicators/*
-/data/signals/*
-__pycache__
+.conda/
+.venv/
+
+# Generated outputs
+/artifacts/
+/results/
+*.sqlite3
+
+# Local data workspace: downloaded OHLC, indicators, raw files, private signals
+/data/
+
+# Tracked benchmark fixtures
+!/benchmarks/
+!/benchmarks/fixtures/
+!/benchmarks/fixtures/*.csv
+
+# Python/cache noise
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Tooling and OS noise
+.streamlit/
+.ipynb_checkpoints/
 .DS_Store
 .env
