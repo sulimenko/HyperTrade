@@ -34,10 +34,9 @@ The primary workflow is:
 - `hypertrade/optimization`
   - Optuna study runner
   - Pareto candidate extraction and ranking
-- `hypertrade/experiments`
+- `hypertrade/artifacts.py`
   - experiment registry
   - benchmark harness
-- `hypertrade/reporting`
   - run and suite loading for analytics
 - `hypertrade/ui`
   - Streamlit app and pages
