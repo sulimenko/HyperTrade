@@ -20,7 +20,7 @@ What this repository is not doing in phase 1:
 
 ## Architecture
 
-The active implementation lives in [hypertrade](/Users/alexey/site/HyperTrade/hypertrade).
+The active implementation lives in `hypertrade/`.
 
 High-level layout:
 
@@ -29,10 +29,21 @@ High-level layout:
 - `hypertrade/signals`: filter space and signal acceptance policy
 - `hypertrade/simulation`: trade simulation and metrics
 - `hypertrade/optimization`: Optuna multi-objective study runner and Pareto handling
-- `hypertrade/experiments`: artifact registry and benchmark harness
+- `hypertrade/artifacts.py`: artifact registry and benchmark harness
 - `hypertrade/ui`: Streamlit dashboard
 
 The supported runtime surface is the root entrypoints plus `hypertrade/`.
+
+Module docs:
+
+- [Data](doc/modules/data.md)
+- [Features](doc/modules/features.md)
+- [Signals](doc/modules/signals.md)
+- [Simulation](doc/modules/simulation.md)
+- [Optimization](doc/modules/optimization.md)
+- [Experiments](doc/modules/experiments.md)
+- [Reporting](doc/modules/reporting.md)
+- [UI](doc/modules/ui.md)
 
 ## Requirements
 
@@ -117,12 +128,12 @@ Benchmark suite runs write a summary bundle under `artifacts/benchmarks/<suite_i
 
 Detailed docs:
 
-- [Architecture and Scope](/Users/alexey/site/HyperTrade/docs/architecture.md)
-- [Artifacts and Metadata](/Users/alexey/site/HyperTrade/docs/artifacts.md)
-- [Benchmarks](/Users/alexey/site/HyperTrade/docs/benchmarks.md)
-- [Objective Profiles and Pareto Workflow](/Users/alexey/site/HyperTrade/docs/objectives_and_pareto.md)
-- [UI Guide](/Users/alexey/site/HyperTrade/docs/ui_guide.md)
-- [Phase 2 Deferred Work](/Users/alexey/site/HyperTrade/docs/phase2_deferred.md)
+- [Architecture and Scope](doc/architecture.md)
+- [Artifacts and Metadata](doc/artifacts.md)
+- [Benchmarks](doc/benchmarks.md)
+- [Objective Profiles and Pareto Workflow](doc/objectives_and_pareto.md)
+- [UI Guide](doc/ui_guide.md)
+- [Phase 2 Deferred Work](doc/phase2_deferred.md)
 
 ## Current Status
 
