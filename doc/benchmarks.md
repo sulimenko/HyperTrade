@@ -12,7 +12,7 @@ These are the required benchmark datasets for smoke validation and dashboard com
 ## Run the Benchmark Suite
 
 ```bash
-./.conda/bin/python run_benchmarks.py --n_trials 1
+python run_benchmarks.py --n_trials 1
 ```
 
 This command:
