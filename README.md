@@ -36,19 +36,28 @@ The supported runtime surface is the root entrypoints plus `hypertrade/`.
 
 ## Requirements
 
-- Python environment with dependencies from [requirements.txt](/Users/alexey/site/HyperTrade/requirements.txt)
+- Python 3 with a project virtual environment
+- dependencies installed from [requirements.txt](/Users/alexey/site/HyperTrade/requirements.txt)
 - benchmark inputs:
   - `benchmarks/fixtures/PF20250597.csv`
   - `benchmarks/fixtures/signals.csv`
 
-If you use the local conda environment from this workspace, examples below can be run with `./.conda/bin/python`.
+Set up a clean local environment:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+Conda can still be used as a personal local environment, but the official project commands use the active standard Python environment.
 
 ## CLI
 
 Run one optimization:
 
 ```bash
-./.conda/bin/python run_optimize.py \
+python run_optimize.py \
   --signals benchmarks/fixtures/PF20250597.csv \
   --n_trials 25 \
   --benchmark_name PF20250597 \
@@ -60,13 +69,13 @@ Run one optimization:
 Run the required benchmark suite:
 
 ```bash
-./.conda/bin/python run_benchmarks.py --n_trials 1
+python run_benchmarks.py --n_trials 1
 ```
 
 Launch the dashboard:
 
 ```bash
-./.conda/bin/python run_dashboard.py
+python run_dashboard.py
 ```
 
 ## Dashboard
