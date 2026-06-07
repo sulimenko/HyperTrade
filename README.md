@@ -48,7 +48,7 @@ Module docs:
 ## Requirements
 
 - Python 3 with a project virtual environment
-- dependencies installed from [requirements.txt](/Users/alexey/site/HyperTrade/requirements.txt)
+- dependencies installed from [requirements.txt]
 - benchmark inputs:
   - `benchmarks/fixtures/PF20250597.csv`
   - `benchmarks/fixtures/signals.csv`
