@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from hypertrade.config.schemas import ConstraintRule, ObjectiveMetric, ObjectiveProfile
+from hypertrade.config.schemas import CandidateSelectionPolicy, ConstraintRule, ObjectiveMetric, ObjectiveProfile
 from hypertrade.optimization.pareto import pick_preferred_candidates
 
 
@@ -13,20 +13,30 @@ class ObjectiveProfileTests(unittest.TestCase):
         profile = ObjectiveProfile(
             name="test_profile",
             objectives=[
-                ObjectiveMetric(metric="sum_trade_returns_pct", direction="maximize"),
-                ObjectiveMetric(metric="proxy_drawdown_usd", direction="minimize"),
+                ObjectiveMetric(metric="sum_trade_returns_pct", direction="minimize"),
+                ObjectiveMetric(metric="proxy_drawdown_usd", direction="maximize"),
             ],
             constraints=[ConstraintRule(metric="trades", min_value=10)],
+            candidate_policy=CandidateSelectionPolicy('max_profit_factor'),
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = Path(tmpdir) / "objective_profile.json"
+            path = Path(tmpdir) / "profiles" / "test_profile.json"
             profile.save(path)
             loaded = ObjectiveProfile.load(path)
 
         self.assertEqual(loaded.name, "test_profile")
-        self.assertEqual(loaded.directions(), ["maximize", "minimize"])
+        self.assertEqual(loaded.directions(), ["minimize", "maximize"])
         self.assertEqual(loaded.constraints[0].metric, "trades")
+        self.assertEqual(loaded.to_dict(), profile.to_dict())
+        # Invalid reusable profiles fail before saving or launching a study.
+        for update in [dict(name='../escape'), dict(objectives=[dict(metric='fake',direction='maximize')]),
+                       dict(objectives=[dict(metric='trades',direction='sideways')]),
+                       dict(constraints=[dict(metric='trades',min_value=20,max_value=10)]),
+                       dict(constraints=[dict(metric='trades',min_value='ten')]),
+                       dict(constraints=[dict(metric='trades')])]:
+            with self.assertRaises(ValueError):
+                ObjectiveProfile.from_dict({**profile.to_dict(), **update})
 
     def test_profile_requires_objectives(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

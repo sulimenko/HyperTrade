@@ -1,6 +1,25 @@
 # T-194 implementation evidence · 2026-10-17
 
-Implementation handoff only. Independent Pipeline CHECK, exact-SHA ChatGPT Review and Draft PR remain pending. No commit, push, PR, merge or deployment was performed by Executor. Git HEAD remains `c5710961f868afaad5e1ca6117504526766e0651`; implementation is in the working tree.
+REPAIR implementation handoff only. Independent Pipeline CHECK, exact-SHA ChatGPT Review and Draft PR remain pending. No commit, push, PR, merge or deployment was performed by Executor. The repair is in the working tree on `ai/T-194-v85`, with unchanged C0 HEAD `bb1e8ac64037eafc1ad1edd0634555580e4879fa`.
+
+## C0 review repairs R-1 through R-4
+
+- R-1: settle executed intrabar exits at actual fill prices before close marks; retain genuine preceding closes before open/gap/time exits. Other active positions mark normally. Exclude the exit candle's subsequent Close from each position's marks. Portfolio objectives consume this corrected equity. Entry/settlement/collateral conventions are unchanged.
+- R-2: validate ATR protective/target direction and positive finite prices. Ignore each wrong-side Donchian bound independently, retaining its valid ATR level; signed distances replace `abs()`. Invalid ATR levels have an explicit technical rejection. Existing same-candle precedence remains.
+- R-3: explicit `python -m hypertrade.data.market --signals <CSV>` preparation uses process-environment `DATA_BASE_URL` with the previous US symbol-search/chart API contract. It writes only `data/cache/market`; prepared-history indicators are calculated without stale source columns. Missing/empty instruments and insufficient early history fail before optimization trials with `market_data_preparation` diagnostics. Existing histories ending early retain actionable per-signal no-candles details (QMMM in the historical signals fixture); explicit preparation checks both ends of the CSV span and fails if the API cannot supply them. Complete prepared research is offline. Live external acquisition was not invoked; the transport contract and staged parquet were verified with a response stub.
+- R-4: New Experiment saves/loads named reusable profiles outside archived runs, restores saved directions, validates name/catalog/directions/constraints/policy, and still launches unsaved edits. Reload explicitly restores saved values.
+
+`CHECK_MODE=benchmark bash doc/ai/project-checks.sh` passed on the final source: Python 3.14, pip dependency check, compilation, API/dashboard imports, **27 tests passed**. Exactly three new regression cases cover executed-exit equity, ATR/Donchian levels, and explicit preparation/missing-data failure; the existing profile roundtrip case now also covers changed directions, policy and invalid configuration.
+
+The long entry-100 / OHLC=(100,120,94,115) / SL=5% / no-cost / initial-1000 / cap-100 reproduction finishes at **995 USD**, with **0.5% maximum drawdown** and no 1015 peak. The symmetric short, targets, time/gap exits, genuine prior-close peaks, a stop while another position stays active, nonnegative buying power and accounting identity pass. The documented wrong-side Donchian target now exits at ATR TP **102**, with **+2 per share**, rather than synthetic TP105.19; short mirror, valid bounds and invalid ATR levels pass.
+
+Final suite: `artifacts/benchmarks/benchmark_suite_20261017T121203Z`: PF20250597 **success**, signals **no_valid_candidates**, two complete bundles, no failures. Artifact inventory hashes and Parquet readability were checked. PF portfolio accounting identity and nonnegative buying power hold across **6,684** curve rows.
+
+Streamlit AppTest created a named two-objective profile with reversed directions, a trade-count constraint and max-PF policy, saved it, loaded it in a fresh session and launched a real cached-data run. Manifest/profile match the saved configuration, status is success and the bundle is complete. Invalid names/metrics display errors and do not replace the saved profile. Temporary UI runs/profiles stayed outside project result directories. No native browser screenshot was produced in this repair.
+
+`git diff --check` passes. Protected-path Git diff is empty; source parquet counts remain **1,813 OHLC / 797 indicators**. No source CSV, fixture, `.env` or protected source cache was written. No configured external service was contacted. Behavior remains EXPERIMENTAL. Independent exact-SHA approval is still required after Pipeline creates its repair commit.
+
+The following records describe the original implementation before C0 review; its numerical results are historical. That initial working tree was based on `c5710961f868afaad5e1ca6117504526766e0651` and was later committed by Pipeline as C0.
 
 ## Deterministic checks
 

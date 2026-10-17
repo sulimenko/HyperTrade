@@ -103,3 +103,75 @@ def test_admission_capital_backfill_cooldown_and_overlapping_equity():
         eligible=evaluate(signals,params)
     assert [t['symbol'] for t in eligible.trades]==['C','A']
     assert sum(s.get('rejected_indicators_filter_failed',0) for s in eligible.signal_stats)==1
+
+
+def test_executed_exits_cannot_create_post_exit_close_peaks():
+    params = StrategyParams(sl=5, tp=100, commission=0, slippage=0,
+                            initial_capital=1000, maximum_position_notional=100, holding_minutes=60)
+    # Entry-bar stops, target fills, time/open gaps and final-close liquidation.
+    cases = [
+        (1, [[100,120,94,115]], {}, 'sl', 95, 995, .5),
+        (-1, [[100,106,80,85]], {}, 'sl', 105, 995, .5),
+        (1, [[100,106,94,85]], dict(sl=50, tp=5), 'tp', 105, 1005, 0),
+        (-1, [[100,106,94,115]], dict(sl=50, tp=5), 'tp', 95, 1005, 0),
+        (1, [[100,101,99,100], [95,120,94,115]], dict(holding_minutes=15), 'time_exit', 95, 995, .5),
+        (-1, [[100,101,99,100], [105,106,80,85]], dict(holding_minutes=15), 'time_exit', 105, 995, .5),
+        (1, [[100,101,99,100], [90,120,89,115]], {}, 'sl', 90, 990, 1),
+        (-1, [[100,101,99,100], [110,111,80,85]], {}, 'sl', 110, 990, 1),
+        # Genuine preceding closes still form peaks before a later open/gap exit.
+        (1, [[100,111,99,110], [95,120,94,115]], dict(sl=20,holding_minutes=15), 'time_exit', 95, 995, 15/1010*100),
+        (-1, [[100,101,89,90], [105,106,80,85]], dict(sl=20,holding_minutes=15), 'time_exit', 105, 995, 15/1010*100),
+        (1, [[100,120,94,115]], dict(sl=50), 'time_exit', 115, 1015, 0),
+    ]
+    for direction, candles, overrides, reason, exit_px, final, dd in cases:
+        frame = market(candles)
+        signal = dict(datetime=frame.iloc[0].datetime, long=['A'] if direction==1 else [], short=['A'] if direction==-1 else [])
+        with patch('hypertrade.simulation.backtest.ensure_market_data', return_value=frame):
+            result = evaluate([signal], replace(params, **overrides))
+        trade = result.portfolio_trades[0]
+        assert (trade['exit_reason'], trade['exit_price']) == (reason, exit_px)
+        assert result.metrics['portfolio_pnl_usd'] == pytest.approx(final-1000)
+        assert result.metrics['portfolio_max_drawdown_pct'] == pytest.approx(dd)
+        assert result.equity.equity_usd.max() == pytest.approx(1010 if dd > 1 else max(1000, final))
+        assert (result.equity.buying_power_usd >= 0).all()
+        assert result.equity.iloc[-1].equity_usd == pytest.approx(final)
+        assert np.allclose(result.equity.equity_usd, 1000+result.equity.realized_pnl_usd+result.equity.unrealized_pnl_usd)
+        assert np.allclose(result.equity.equity_usd, result.equity.available_cash_usd+result.equity.long_security_value_usd
+                           +result.equity.short_collateral_usd+result.equity.locked_short_proceeds_usd-result.equity.short_liability_usd)
+    # One stop settles while the other position still marks normally at that close.
+    frames = {'A': market([[100,120,94,115]]),
+              'B': market([[100,103,99,102],[102,104,101,103],[103,104,102,103]])}
+    start = frames['A'].iloc[0].datetime
+    for direction in [1, -1]:
+        signal = dict(datetime=start, long=['A','B'] if direction==1 else ['A'], short=['B'] if direction==-1 else [])
+        with patch('hypertrade.simulation.backtest.ensure_market_data', side_effect=lambda symbol,*_: frames[symbol]):
+            result = evaluate([signal], replace(params, holding_minutes=30))
+        middle = result.equity[result.equity.datetime==start+pd.Timedelta(minutes=15)].iloc[-1]
+        assert middle.realized_pnl_usd == -5
+        assert middle.unrealized_pnl_usd == 2*direction
+        assert middle.equity_usd == 995+2*direction
+        assert result.equity.equity_usd.max() == 1000
+        assert result.metrics['portfolio_pnl_usd'] == -5+3*direction
+        assert result.metrics['portfolio_max_drawdown_pct'] == pytest.approx(.3 if direction==1 else .8)
+
+
+def test_atr_donchian_bounds_keep_protective_and_target_direction():
+    params = StrategyParams(atr_use=True, atr_sl=1, atr_tp=1, commission=0, slippage=0)
+    params.indicator_config['donchian'].update(enabled=True, period=20)
+    # Both wrong-side bounds, then a valid limiting target and a valid wider stop.
+    for direction, high, low, close, don_high, don_low, expected_px, expected_reason in [
+        (1,106,94,94,95,90,102,'tp'),
+        (-1,106,94,106,110,105,98,'tp'),
+        (1,106,94,94,101.5,90,101.5*.998,'tp'),
+        (-1,106,94,106,110,98.5,98.5*1.002,'tp'),
+        (1,101,94,100,105,101,98,'sl'),
+        (-1,106,99,100,99,95,102,'sl'),
+    ]:
+        frame = market([[100,high,low,close]]).assign(atr_14=2, don_h_20=don_high, don_l_20=don_low)
+        trade = simulate_trade('A', frame.iloc[0].datetime, params, frame, direction)
+        assert not trade['rejected']
+        assert trade['exit_reason'] == expected_reason
+        assert trade['exit_price'] == pytest.approx(expected_px)
+        assert trade['pnl'] == pytest.approx((expected_px-100)*direction)
+    invalid = market([[100,101,99,100]]).assign(atr_14=2)
+    assert simulate_trade('A',invalid.iloc[0].datetime,replace(params,skip_filters=True,atr_tp=-1),invalid)['reject_reason']=='invalid_atr_levels'

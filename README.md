@@ -27,7 +27,16 @@ CHECK_MODE=benchmark bash doc/ai/project-checks.sh
 
 CSV is semicolon-separated, with `datetime`, `long_symbols` (or `symbols`) and optional `short_symbols`. The historical fixture spelling `shotr_symbols` is also read. ISO and `dd.mm.yyyy` dates are accepted. Naive dates explicitly mean UTC; timezone offsets preserve their instant. Equal timestamps are grouped, symbols deduplicated per side, and signals sorted. Inputs are never rewritten.
 
-Research runs read local `data/ohlc/*.parquet` and `data/indicators/*.parquet`. They never download or overwrite source data. Missing market files are explicit eligibility rejections. Additional indicator columns go into `data/cache/indicators`; uploaded CSVs go into `data/cache/uploads`. The existing RTH-only source uses UTC-day VWAP unchanged. Full indicator-cache invalidation is deferred.
+Research runs read local `data/ohlc/*.parquet` and `data/indicators/*.parquet`, preferring explicitly prepared histories in `data/cache/market`. They never download or overwrite source data. Missing/empty instruments or history starting after the signal fail the run before trials, with actionable `market_data_preparation` diagnostics rather than a misleading filter outcome. Prepare new or incomplete instruments explicitly:
+
+```sh
+# Configure DATA_BASE_URL in the process environment for the existing market API.
+.venv/bin/python -m hypertrade.data.market --signals path/to/external.csv
+```
+
+Preparation uses the existing US `symbolSearch` / `addChartSymbols` API contract, validates coverage and stages parquet only in `data/cache/market`. Complete local histories need no API or network. API failures/unrecognized symbols fail preparation visibly; no new credentials are required. Existing histories ending before a later signal retain explicit `rejected_no_candles_after_entry` details (including historical delisted instruments in fixtures). The preparation command checks the full CSV signal span; it cannot invent missing history. End-of-history liquidation remains marked `data_truncated` if a trade's requested holding period extends beyond available bars.
+
+Additional indicator columns go into `data/cache/indicators`; indicators for separately prepared histories are computed from those histories without reusing stale source columns. Uploaded CSVs go into `data/cache/uploads`. The existing RTH-only source uses UTC-day VWAP unchanged. Full indicator-cache invalidation is deferred.
 
 - **Research / Normalized:** unlimited budget, identical $10,000 nominal for baseline and candidates, fractional analytical exposure. `sum_trade_returns_pct` is a sum of percentage points, **not** a return on capital. Net PnL, mean/median trade return, win rate, profit factor and a deterministic sequential proxy drawdown are available.
 - **Capital / Portfolio:** $100,000 initial equity, maximum $10,000 gross notional per position, affordable integer shares, entry/exit commission in USD/share/side and separate directional fractional slippage. Long notional and 100% short collateral are reserved; short proceeds remain locked. Time equity includes realized and unrealized PnL; drawdown is a percentage of peak equity.

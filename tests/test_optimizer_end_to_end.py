@@ -208,3 +208,42 @@ def test_unexpected_trial_error_is_failed_with_complete_diagnostic_bundle(tmp_pa
     errors=json.loads((run/'errors.json').read_text())['errors']
     assert 'RuntimeError: execution failure sentinel' in errors[0]['traceback']
     assert 'broken_after_baseline' in errors[0]['traceback']
+
+
+def test_missing_market_history_fails_upfront_and_preparation_stays_separate(tmp_path):
+    import pytest
+    from hypertrade.data import market
+    stamp = pd.Timestamp('2025-07-10T14:00:00Z')
+    frame = pd.DataFrame(dict(datetime=pd.date_range(stamp-pd.Timedelta(minutes=15), periods=4, freq='15min'),
+                              open=100., high=101., low=99., close=100.))
+    csv = tmp_path/'external.csv'
+    csv.write_text('datetime;long_symbols;short_symbols\n2025-07-10T14:00:00Z;NEW_US_SYMBOL;\n')
+    source = tmp_path/'source'
+    staged = tmp_path/'staged'
+    config = OptimizationRunConfig(signals_path=str(csv), n_trials=1, artifacts_root=str(tmp_path/'runs'))
+    with patch.object(market, 'MARKET_PATH', source), patch.object(market, 'PREPARED_PATH', staged), \
+         patch.object(market.requests, 'get', side_effect=AssertionError('Research must not fetch')), \
+         patch.object(market.requests, 'post', side_effect=AssertionError('Research must not fetch')):
+        failed = run_optimization(config)
+        assert json.loads((failed/'manifest.json').read_text())['status']=='failed'
+        errors = json.loads((failed/'errors.json').read_text())['errors']
+        assert errors[0]['stage']=='market_data_preparation'
+        assert 'NEW_US_SYMBOL' in errors[0]['error'] and '--signals <CSV>' in errors[0]['error']
+        assert load_run_table(failed, 'trials.parquet').empty
+        with pytest.raises(market.MissingMarketDataError, match='DATA_BASE_URL is not configured'):
+            market.prepare_market_history('NEW_US_SYMBOL', stamp)
+        # Extend an insufficient immutable source into a separate staged history.
+        source.mkdir()
+        original = source/'NEW_US_SYMBOL.parquet'
+        frame.iloc[2:].to_parquet(original, index=False)
+        original_bytes = original.read_bytes()
+        with patch.object(market, 'fetch_market_data', return_value=frame):
+            prepared = market.prepare_market_history('NEW_US_SYMBOL', stamp, base_url='http://configured-source')
+        assert prepared.parent==staged and original.read_bytes()==original_bytes
+        # Complete prepared data is usable without an API, including another preparation.
+        assert market.prepare_market_history('NEW_US_SYMBOL', stamp)==prepared
+        assert market.ensure_market_history('NEW_US_SYMBOL', stamp).datetime.min()==frame.datetime.min()
+        ready = run_optimization(config)
+        assert json.loads((ready/'manifest.json').read_text())['status']=='no_valid_candidates'
+        assert not json.loads((ready/'errors.json').read_text())['errors']
+        assert validate_run_artifacts(ready)==(True, [])

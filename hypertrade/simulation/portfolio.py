@@ -41,7 +41,7 @@ class CapitalLedger:
 
 
 def portfolio_equity(trades: list[dict], marks: dict[int, pd.Series], initial: float) -> tuple[pd.DataFrame, dict]:
-    """Close marks then exits then entries at equal timestamps; no future marks at open."""
+    """Settle intrabar exits, mark prior closes, settle open exits, then enter."""
     columns = ['datetime', 'equity_usd', 'realized_pnl_usd', 'unrealized_pnl_usd',
                'available_cash_usd', 'buying_power_usd', 'reserved_notional_usd',
                'long_security_value_usd', 'short_collateral_usd', 'short_liability_usd', 'locked_short_proceeds_usd', 'drawdown_pct']
@@ -88,8 +88,14 @@ def portfolio_equity(trades: list[dict], marks: dict[int, pd.Series], initial: f
 
     snapshot(start, 'initial')
     for ts in sorted(t for t in timeline if start <= t <= end):
-        if active:
-            snapshot(ts, 'close_marks_before_exits')
+        for i in sorted(exits.get(ts, [])):
+            if i in active and trades[i]['exit_dt'] < ts:
+                active.remove(i)
+                realized += trades[i]['cash_pnl_usd']
+        if active or exits.get(ts):
+            # An open/gap exit may still have a genuine preceding candle close
+            # at this timestamp. Intrabar executions have already settled.
+            snapshot(ts, 'close_marks_after_intrabar_exits')
         for i in sorted(exits.get(ts, [])):
             if i in active:
                 active.remove(i)

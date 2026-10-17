@@ -246,6 +246,13 @@ def ensure_market_data(symbol: str, start: pd.Timestamp, indicator_config) -> pd
     if not required_cols:
         return market_df
 
+    # Prepared/extended histories must not reuse legacy columns with missing rows.
+    # Compute locally for this history; immutable source indicators stay untouched.
+    if market_df.attrs.get('prepared_market'):
+        ind_df = calculate_indicators(market_df, indicator_config)
+        ohlc = market_df.merge(ind_df, on='datetime', how='left')
+        return _add_vol_ratio(_add_bb_p(_add_macd(ohlc, indicator_config), indicator_config), indicator_config)
+
     ind_df = load_indicator(symbol)
     if ind_df is None or ind_df.empty:
         ind_df = calculate_indicators(market_df, indicator_config)

@@ -8,13 +8,15 @@ The user intentionally retains two assumptions: filters/ranking can see the entr
 
 Entry fill is `open * (1 + direction * slippage)`, exit fill is `raw_exit * (1 - direction * slippage)`. Direction is +1 long / -1 short. Net PnL per share is `(exit-entry)*direction - 2*commission`. Commission is USD/share/side; slippage is a dimensionless fraction/side. If data ends before the holding deadline, exit at the last close and retain `data_truncated=true` in trade artifacts.
 
+ATR levels must be finite and positive, with long SL strictly below entry / TP above, and short SL above / TP below. Invalid ATR levels reject with `invalid_atr_levels`. A Donchian bound is applied only if it is valid on the corresponding side; otherwise the valid ATR level remains. Signed distances preserve direction instead of mirroring wrong-side targets with an absolute value.
+
 ## Final admission
 
 Time/data/indicator eligibility precedes a non-mutating cooldown check, ranking, side cap and affordable admission. Unexpected calculation errors propagate, never become rejection reasons. ATR/technical rejection cannot reserve capital or update cooldown. Ranked candidates unable to buy one share generate `rejected_insufficient_capital`; the next eligible candidate can fill the side cap. A rejected signal never changes cooldown. Counts and per-symbol reasons are saved separately for both models.
 
 The actual entry candle time, rather than an off-grid CSV timestamp, determines chronology and cooldown. Same entry-time candidates sort by descending ranking, ties by stable input order; grouped CSV rows retain their original symbol order. Long and short compete for the same budget with that deterministic order, without an allocation optimizer.
 
-At each timestamp, available close marks are recorded first, existing exits settle, then new entries reserve cash. Intrabar exits settle at the candle close; gap/time exits settle at the open. New zero-duration exits settle after the entire entry batch, so their released cash is not reused within that same batch. Adjacent batches can reuse settled cash. Long and short keep separate side caps and a shared per-symbol cooldown.
+At each timestamp, intrabar exits settle at their actual fill price, surviving positions receive available prior-candle close marks, open/gap/time exits settle, then new entries reserve cash. An exiting position never receives the subsequent Close of its exit candle. A genuine preceding candle close remains visible before a later open/gap exit, even when both events have the same timestamp. Intrabar exits settle at the candle close; gap/time exits settle at the open. New zero-duration exits settle after the entire entry batch, so their released cash is not reused within that same batch. Adjacent batches can reuse settled cash. Long and short keep separate side caps and a shared per-symbol cooldown. This same equity supplies portfolio objectives in Optuna.
 
 ## Research / Normalized
 

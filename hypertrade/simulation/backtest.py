@@ -6,6 +6,7 @@ import json
 import pandas as pd
 
 from hypertrade.data.signals import utc_timestamp
+from hypertrade.data.market import MissingMarketDataError
 from hypertrade.features.indicators import ensure_market_data
 from hypertrade.filters.acceptance import passes_time_gate
 from hypertrade.filters.ranking import rank_score
@@ -39,19 +40,19 @@ def evaluate(signals: list[dict], params) -> BacktestResult:
         for label, direction in [('long', 1), ('short', -1)]:
             for symbol in dict.fromkeys(signal.get(label, [])):
                 stamp = utc_timestamp(signal['datetime'])
-                def reject(reason):
-                    rejections.append({'datetime': stamp, 'symbol': symbol, 'direction': direction, 'reason': reason})
+                def reject(reason, **diagnostic):
+                    rejections.append({'datetime': stamp, 'symbol': symbol, 'direction': direction, 'reason': reason, **diagnostic})
                 if not passes_time_gate(stamp, params):
                     reject('rejected_time_gate')
                     continue
                 frame = ensure_market_data(symbol, stamp, params.indicator_config)
                 if frame is None or frame.empty:
-                    reject('rejected_no_data')
-                    continue
+                    raise MissingMarketDataError(symbol, stamp, 'missing/empty market history')
                 expected = pd.Timestamp(compute_entry_time_cached(stamp, params.delay_open, cache))
                 idx = int(frame['datetime'].searchsorted(expected))
                 if idx >= len(frame):
-                    reject('rejected_no_candles_after_entry')
+                    reject('rejected_no_candles_after_entry', market_history_end=str(frame['datetime'].max()),
+                           expected_entry=str(expected), action='Prepare extended data with python -m hypertrade.data.market --signals <CSV>')
                     continue
                 # Technical exits/ATR eligibility must succeed before any reservation/cooldown mutation.
                 trade = simulate_trade(symbol, stamp, params, frame, direction, cache)
@@ -63,8 +64,10 @@ def evaluate(signals: list[dict], params) -> BacktestResult:
                 end_idx = int(frame['datetime'].searchsorted(trade['exit_dt'], side='right'))
                 candles = frame.iloc[idx:end_idx]
                 close_times = pd.DatetimeIndex(candles['datetime']) + pd.Timedelta(minutes=params.bar_minutes)
-                marks[candidate_id] = pd.Series([trade['entry_mark_price'], *candles['close'].to_numpy(float)],
-                                                index=pd.DatetimeIndex([trade['entry_dt'], *close_times]))
+                # Exit-candle closes cannot mark a position already executed intrabar/open.
+                before_exit = close_times <= trade['exit_dt']
+                marks[candidate_id] = pd.Series([trade['entry_mark_price'], *candles['close'].to_numpy(float)[before_exit]],
+                                                index=pd.DatetimeIndex([trade['entry_dt'], *close_times[before_exit]]))
                 candidates.append(trade)
                 candidate_id += 1
 

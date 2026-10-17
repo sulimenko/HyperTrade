@@ -26,19 +26,48 @@ def render():
     seed = c.number_input('Seed', min_value=0, value=42)
     st.caption('Naive CSV dates are explicitly UTC; dd.mm.yyyy and ISO are accepted. Original files are preserved.')
     profiles = sorted(PROFILE_ROOT.glob('*.json'))
-    profile_choice = st.selectbox('Objective profile', ['Default research profile']+[p.name for p in profiles])
-    base = DEFAULT_OBJECTIVE_PROFILE.to_dict() if profile_choice == 'Default research profile' else json.loads((PROFILE_ROOT/profile_choice).read_text())
+    profile_choice = st.selectbox('Load objective profile', ['Default research profile']+[p.name for p in profiles])
+    try:
+        base = (DEFAULT_OBJECTIVE_PROFILE if profile_choice == 'Default research profile'
+                else ObjectiveProfile.load(PROFILE_ROOT/profile_choice)).to_dict()
+    except (ValueError, TypeError, KeyError, OSError) as exc:
+        st.error(f'Cannot load profile: {exc}')
+        return
+    if st.button('Reload saved values'):
+        st.session_state['profile_editor_version'] = st.session_state.get('profile_editor_version', 0) + 1
+    editor_key = f"{profile_choice}:{st.session_state.get('profile_editor_version', 0)}"
     with st.expander('Objectives & constraints', expanded=True):
-        selected = st.multiselect('Pareto axes', list(OBJECTIVE_CATALOG), default=[o['metric'] for o in base['objectives']])
+        profile_name = st.text_input('Profile name', value=base['name'], key=editor_key+':name')
+        selected = st.multiselect('Pareto axes', list(OBJECTIVE_CATALOG), default=[o['metric'] for o in base['objectives']],
+                                  key=editor_key+':axes')
+        saved_directions = {o['metric']: o['direction'] for o in base['objectives']}
         directions = {}
         for metric in selected:
             directions[metric] = st.selectbox(OBJECTIVE_CATALOG[metric]['label'], ['maximize','minimize'],
-                index=0 if OBJECTIVE_CATALOG[metric]['direction']=='maximize' else 1, key='objective_'+metric)
+                index=0 if saved_directions.get(metric, OBJECTIVE_CATALOG[metric]['direction'])=='maximize' else 1,
+                key=editor_key+':direction:'+metric)
         policy = st.selectbox('Shortlist policy', sorted(CANDIDATE_POLICY_MODES),
-                              index=sorted(CANDIDATE_POLICY_MODES).index(base.get('candidate_policy',{}).get('mode','utopia_distance')))
+                              index=sorted(CANDIDATE_POLICY_MODES).index(base['candidate_policy']['mode']), key=editor_key+':policy')
         constraints = st.data_editor(pd.DataFrame(base['constraints'], columns=['metric','min_value','max_value']),
-                                    num_rows='dynamic', hide_index=True, width='stretch')
+                                    num_rows='dynamic', hide_index=True, width='stretch', key=editor_key+':constraints',
+                                    column_config={'metric': st.column_config.SelectboxColumn('Metric', options=list(OBJECTIVE_CATALOG)),
+                                                   'min_value': st.column_config.NumberColumn('Minimum'),
+                                                   'max_value': st.column_config.NumberColumn('Maximum')})
         st.caption('Research sum is percentage points across trades. Proxy drawdown uses a sequential normalized PnL curve; portfolio drawdown uses time equity.')
+        save_profile = st.button('Save profile')
+
+    def edited_profile():
+        rows = [{k: None if pd.isna(v) else v for k,v in row.items()} for row in constraints.to_dict(orient='records')]
+        return ObjectiveProfile.from_dict(dict(name=profile_name, objectives=[dict(metric=m,direction=directions[m]) for m in selected],
+                   constraints=[r for r in rows if any(v is not None for v in r.values())], candidate_policy={'mode':policy}))
+
+    if save_profile:
+        try:
+            profile = edited_profile()
+            profile.save(PROFILE_ROOT/(profile.name+'.json'))
+            st.success(f'Saved reusable profile: {profile.name}. Select it above on the next rerun.')
+        except (ValueError, TypeError, OSError) as exc:
+            st.error(str(exc))
     with st.expander('Search parameters & transaction costs'):
         payload = asdict(DEFAULT_FILTER_SEARCH_SPACE)
         a,b,c = st.columns(3)
@@ -60,9 +89,7 @@ def render():
             for field in [k for k in payload if k.endswith('_use')] + ['commission','slippage','ranking_mode_choices']:
                 search_payload[field] = payload[field]
             search = FilterSearchSpace.from_dict(search_payload)
-            constraint_rows = json.loads(constraints.to_json(orient='records'))
-            profile = ObjectiveProfile.from_dict(dict(name='ui_research', objectives=[dict(metric=m,direction=directions[m]) for m in selected],
-                       constraints=[r for r in constraint_rows if r.get('metric')], candidate_policy={'mode':policy}))
+            profile = edited_profile()
             if upload is not None:
                 data = upload.getvalue()
                 cached = Path('data/cache/uploads')

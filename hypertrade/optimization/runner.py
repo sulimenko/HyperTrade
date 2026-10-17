@@ -13,6 +13,7 @@ from hypertrade.config.defaults import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJE
 from hypertrade.config.schemas import FilterSearchSpace, ObjectiveProfile, OptimizationRunConfig
 from hypertrade.config.strategy import StrategyParams
 from hypertrade.data.signals import load_external_signals
+from hypertrade.data.market import MissingMarketDataError
 from hypertrade.experiments.registry import ExperimentRegistry
 from hypertrade.experiments.artifacts import REQUIRED_RUN_ARTIFACTS
 from hypertrade.optimization.search_space import build_strategy_params
@@ -59,6 +60,7 @@ def run_optimization(run_config: OptimizationRunConfig, objective_profile: Objec
     try:
         if objective_profile is None and run_config.objective_profile_path:
             profile = ObjectiveProfile.load(run_config.objective_profile_path)
+        profile.validate()
         from hypertrade.config.defaults import OBJECTIVE_CATALOG
         for metric in [o.metric for o in profile.objectives] + [c.metric for c in profile.constraints]:
             if metric not in OBJECTIVE_CATALOG:
@@ -114,7 +116,8 @@ def run_optimization(run_config: OptimizationRunConfig, objective_profile: Objec
             candidate_results[int(number)] = evaluate(signals, params)
         status = 'failed' if errors else ('success' if not shortlist.empty else 'no_valid_candidates')
     except Exception as exc:
-        errors.append(dict(trial=None, error=f'{type(exc).__name__}: {exc}', traceback=traceback.format_exc()))
+        errors.append(dict(trial=None, stage='market_data_preparation' if isinstance(exc, MissingMarketDataError) else 'research',
+                           error=f'{type(exc).__name__}: {exc}', traceback=traceback.format_exc()))
         logs.append(errors[-1]['traceback'])
         if study is not None:
             trials = _trial_frame(study, profile)
@@ -156,7 +159,7 @@ def run_optimization(run_config: OptimizationRunConfig, objective_profile: Objec
     source_files = []
     symbols = {symbol for signal in signals for side in ('long','short') for symbol in signal.get(side,[])}
     for symbol in sorted(symbols):
-        for directory in ('data/ohlc','data/indicators'):
+        for directory in ('data/ohlc','data/indicators','data/cache/market'):
             source = Path(directory)/f'{symbol}.parquet'
             if source.is_file():
                 stat = source.stat()
@@ -175,6 +178,7 @@ def run_optimization(run_config: OptimizationRunConfig, objective_profile: Objec
                     baseline_params=asdict(baseline_params),
                     assumptions=['Entry OHLC may inform filters/ranking at entry open', 'Existing bullish/bearish same-bar SL/TP priority',
                                  'RTH input, UTC-day VWAP', 'Intrabar exits settle at candle close; gap/time exits at open; zero-duration exits settle after the entry batch',
+                                 'Executed intrabar exits settle before close marks; actual preceding closes remain visible before open exits',
                                  'Fixed baseline uses search minimum SL/TP/delay/hold; candidates tune exits and rules'])
     for name, payload in [('manifest', manifest), ('objective_profile', profile.to_dict()), ('search_space', asdict(search))]:
         registry.save_json(run_dir/f'{name}.json', payload)

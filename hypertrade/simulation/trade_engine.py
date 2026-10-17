@@ -205,6 +205,10 @@ def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG, market_cac
         atr_tp = float(getattr(params, "atr_tp", 1.0))
         sl_price = entry_price_for_levels - float(direction) * atr_sl * atr_v
         tp_price = entry_price_for_levels + float(direction) * atr_tp * atr_v
+        if not (np.isfinite([sl_price, tp_price]).all() and sl_price > 0 and tp_price > 0
+                and direction * (entry_price_for_levels - sl_price) > 0
+                and direction * (tp_price - entry_price_for_levels) > 0):
+            return {"symbol": symbol, "rejected": True, "reject_reason": "invalid_atr_levels"}
         indicator_config = getattr(params, "indicator_config", {})
         don_cfg = indicator_settings(indicator_config, "donchian")
         if indicator_enabled(indicator_config, "donchian"):
@@ -219,13 +223,16 @@ def simulate_trade(symbol, signal_time, params, ohlc, direction=LONG, market_cac
                     don_h = float(don_h)
                     don_l = float(don_l)
                     if direction == LONG:
-                        sl_price = min(sl_price, don_l * (1.0 - pad))
-                        tp_price = min(tp_price, don_h * (1.0 - pad))
+                        don_sl, don_tp = don_l * (1.0 - pad), don_h * (1.0 - pad)
                     else:
-                        sl_price = max(sl_price, don_h * (1.0 + pad))
-                        tp_price = max(tp_price, don_l * (1.0 + pad))
-        sl_pct = abs((entry_price_for_levels - sl_price) / entry_price_for_levels) * 100.0
-        tp_pct = abs((tp_price - entry_price_for_levels) / entry_price_for_levels) * 100.0
+                        don_sl, don_tp = don_h * (1.0 + pad), don_l * (1.0 + pad)
+                    # A wrong-side channel bound cannot mirror a target across the entry.
+                    if np.isfinite(don_sl) and don_sl > 0 and direction * (entry_price_for_levels - don_sl) > 0:
+                        sl_price = min(sl_price, don_sl) if direction == LONG else max(sl_price, don_sl)
+                    if np.isfinite(don_tp) and don_tp > 0 and direction * (don_tp - entry_price_for_levels) > 0:
+                        tp_price = min(tp_price, don_tp) if direction == LONG else max(tp_price, don_tp)
+        sl_pct = direction * (entry_price_for_levels - sl_price) / entry_price_for_levels * 100.0
+        tp_pct = direction * (tp_price - entry_price_for_levels) / entry_price_for_levels * 100.0
     else:
         sl_pct = float(params.sl)
         tp_pct = float(params.tp)

@@ -10,7 +10,7 @@ Search the experiment list and inspect latest study/baseline status. Empty works
 
 Choose a fixed benchmark, custom CSV path or uploaded CSV. Configure Pareto objectives/directions, constraints and preferred-candidate policy. Search toggles and costs override corresponding values in the full JSON editor; all other editable search fields are passed through. Units for research sums, portfolio metrics, per-share commission and fractional slippage are explicit.
 
-Start runs one baseline and the configured trials. Profiles are loaded from `config/defaults/profiles/*.json` or edited inline. Existing run profiles/artifact hashes are never rewritten by this view. Failed runs expose persisted diagnostics.
+Start runs one baseline and the configured trials. Choose **Load objective profile** from `config/defaults/profiles/*.json`, edit its name, axes, directions, constraints and shortlist policy, then **Save profile** to create/replace that reusable named profile. **Reload saved values** discards editor changes for the selected profile. Saved directions override catalog defaults. Names accept 1–64 letters/digits/underscores/hyphens starting with a letter/digit; invalid names, unknown metrics/directions and invalid numeric constraint bounds show an error. Saving creates the project-managed profile directory when needed. Unsaved edits can also start a run; the chosen name and full edited configuration are copied into its manifest/profile bundle. Existing run profiles/artifact hashes are never rewritten by this view. Failed runs expose persisted diagnostics.
 
 ## Optimizer Explorer
 
