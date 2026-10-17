@@ -5,7 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from hypertrade.config.schemas import ConstraintRule, ObjectiveMetric, ObjectiveProfile
-from hypertrade.optimization import pick_preferred_candidates
+from hypertrade.optimization.pareto import pick_preferred_candidates
 
 
 class ObjectiveProfileTests(unittest.TestCase):
@@ -13,8 +13,8 @@ class ObjectiveProfileTests(unittest.TestCase):
         profile = ObjectiveProfile(
             name="test_profile",
             objectives=[
-                ObjectiveMetric(metric="total_pnl", direction="maximize"),
-                ObjectiveMetric(metric="max_drawdown", direction="minimize"),
+                ObjectiveMetric(metric="sum_trade_returns_pct", direction="maximize"),
+                ObjectiveMetric(metric="proxy_drawdown_usd", direction="minimize"),
             ],
             constraints=[ConstraintRule(metric="trades", min_value=10)],
         )
@@ -38,19 +38,19 @@ class ObjectiveProfileTests(unittest.TestCase):
     def test_candidate_policy_changes_preferred_selection(self) -> None:
         frame = pd.DataFrame(
             [
-                {"number": 1, "total_pnl": 10.0, "max_drawdown": 1.0, "profit_factor": 1.2, "avg_hold_minutes": 20.0},
-                {"number": 2, "total_pnl": 20.0, "max_drawdown": 5.0, "profit_factor": 1.1, "avg_hold_minutes": 25.0},
+                {"number": 1, "sum_trade_returns_pct": 10.0, "proxy_drawdown_usd": 1.0, "profit_factor": 1.2, "avg_hold_minutes": 20.0},
+                {"number": 2, "sum_trade_returns_pct": 20.0, "proxy_drawdown_usd": 5.0, "profit_factor": 1.1, "avg_hold_minutes": 25.0},
             ]
         )
         profile = ObjectiveProfile.from_dict(
             {
                 "name": "policy_test",
                 "objectives": [
-                    {"metric": "total_pnl", "direction": "maximize"},
-                    {"metric": "max_drawdown", "direction": "minimize"},
+                    {"metric": "sum_trade_returns_pct", "direction": "maximize"},
+                    {"metric": "proxy_drawdown_usd", "direction": "minimize"},
                 ],
                 "constraints": [],
-                "candidate_policy": {"mode": "max_total_pnl"},
+                "candidate_policy": {"mode": "max_sum_trade_returns_pct"},
             }
         )
         preferred = pick_preferred_candidates(frame, profile, limit=1)

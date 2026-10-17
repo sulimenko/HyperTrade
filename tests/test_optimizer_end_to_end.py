@@ -9,9 +9,12 @@ from unittest.mock import patch
 import pandas as pd
 
 import run_optimize
-from hypertrade.config import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJECTIVE_PROFILE, ConstraintRule, ObjectiveProfile, OptimizationRunConfig
-from hypertrade.artifacts import REQUIRED_RUN_ARTIFACTS, load_run_table, validate_run_artifacts
-from hypertrade.optimization import run_optimization
+from hypertrade.config.defaults import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJECTIVE_PROFILE, ConstraintRule, ObjectiveProfile, OptimizationRunConfig
+from hypertrade.experiments.artifacts import REQUIRED_RUN_ARTIFACTS, load_run_table, validate_run_artifacts
+from hypertrade.optimization.runner import run_optimization
+from hypertrade.simulation.backtest import BacktestResult
+from hypertrade.simulation.metrics import compute_metrics, sequential_curve
+from hypertrade.simulation.portfolio import portfolio_equity
 
 
 def _synthetic_signals() -> list[dict]:
@@ -53,7 +56,7 @@ def _synthetic_backtest(signals, params):
             "symbols_total": 2,
             "symbols_traded": 1,
             "symbols_rejected": 1,
-            "total_pnl": pnl,
+            "sum_trade_returns_pct": pnl,
             "avg_pnl": pnl,
             "input_long": 2,
             "input_short": 0,
@@ -65,20 +68,25 @@ def _synthetic_backtest(signals, params):
         }
     ]
     metrics = {
-        "total_pnl": pnl,
-        "max_drawdown": drawdown,
+        "sum_trade_returns_pct": pnl,
+        "proxy_drawdown_usd": drawdown,
         "profit_factor": profit_factor,
         "avg_hold_minutes": hold_minutes,
         "trades": float(len(trades) + 25),
         "calmar": pnl / drawdown,
         "cvar_5": -0.02,
     }
-    return trades, signal_stats, metrics
+    # Reuse the existing synthetic outcomes; artifact assertions exercise the full owner result.
+    metrics = {**metrics, **compute_metrics(trades,params), 'trades':26.0,
+               'portfolio_return_pct':1.0,'portfolio_max_drawdown_pct':0.5,'portfolio_trade_count':1.0}
+    metrics['profit_factor'] = profit_factor
+    equity,_ = portfolio_equity([],{},params.initial_capital)
+    return BacktestResult(trades,signal_stats,metrics,[],[],equity,sequential_curve(trades))
 
 
 class OptimizerEndToEndTests(unittest.TestCase):
-    @patch("hypertrade.optimization.run_backtest", side_effect=_synthetic_backtest)
-    @patch("hypertrade.optimization.load_external_signals", side_effect=lambda _: _synthetic_signals())
+    @patch("hypertrade.optimization.runner.evaluate", side_effect=_synthetic_backtest)
+    @patch("hypertrade.optimization.runner.load_external_signals", side_effect=lambda _: _synthetic_signals())
     def test_run_optimization_persists_complete_bundle(self, _mock_signals, _mock_backtest) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = run_optimization(
@@ -102,6 +110,9 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertEqual(manifest["run_label"], "synthetic_e2e")
             self.assertEqual(manifest["n_trials"], 3)
             self.assertEqual(manifest["objective_profile_name"], DEFAULT_OBJECTIVE_PROFILE.name)
+            self.assertEqual(manifest['status'],'success')
+            self.assertTrue((run_dir/'baseline_trades.parquet').is_file())
+            self.assertEqual(json.loads((run_dir/'baseline_metrics.json').read_text())['normalized_notional_usd'],10000)
             self.assertIn("config_hashes", manifest)
             self.assertIn("data_hashes", manifest)
 
@@ -123,8 +134,8 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertIn("candidate_trial", trades_df.columns)
             self.assertIn("candidate_trial", signal_stats_df.columns)
 
-    @patch("hypertrade.optimization.run_backtest", side_effect=_synthetic_backtest)
-    @patch("hypertrade.optimization.load_external_signals", side_effect=lambda _: _synthetic_signals())
+    @patch("hypertrade.optimization.runner.evaluate", side_effect=_synthetic_backtest)
+    @patch("hypertrade.optimization.runner.load_external_signals", side_effect=lambda _: _synthetic_signals())
     def test_invalid_trials_are_pruned_from_pareto_outputs(self, _mock_signals, _mock_backtest) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             impossible_profile = ObjectiveProfile(
@@ -152,6 +163,7 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertTrue((pareto_df.get("constraint_violations", pd.Series(dtype=str)).fillna("") == "").all())
             self.assertEqual(summary["pareto_candidate_count"], len(pareto_df))
             self.assertGreaterEqual(summary["pruned_trial_count"], 1)
+            self.assertEqual(summary['status'],'no_valid_candidates')
 
     @patch("run_optimize.optimize_run", return_value=Path("/tmp/demo_run"))
     def test_run_optimize_cli_prints_run_dir(self, mock_run_optimization) -> None:
@@ -176,3 +188,23 @@ class OptimizerEndToEndTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_unexpected_trial_error_is_failed_with_complete_diagnostic_bundle(tmp_path):
+    from hypertrade.simulation.backtest import evaluate
+    calls=0
+    def broken_after_baseline(signals,params):
+        nonlocal calls
+        calls+=1
+        if calls==1:
+            return evaluate([],params)
+        raise RuntimeError('execution failure sentinel')
+    with patch('hypertrade.optimization.runner.load_external_signals',return_value=_synthetic_signals()), \
+         patch('hypertrade.optimization.runner.evaluate',side_effect=broken_after_baseline):
+        run=run_optimization(OptimizationRunConfig(signals_path='benchmarks/fixtures/PF20250597.csv',n_trials=1,artifacts_root=str(tmp_path)))
+    assert validate_run_artifacts(run)==(True,[])
+    assert json.loads((run/'manifest.json').read_text())['status']=='failed'
+    assert load_run_table(run,'trials.parquet').iloc[0]['state']=='FAIL'
+    errors=json.loads((run/'errors.json').read_text())['errors']
+    assert 'RuntimeError: execution failure sentinel' in errors[0]['traceback']
+    assert 'broken_after_baseline' in errors[0]['traceback']

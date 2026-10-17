@@ -6,9 +6,10 @@ import os
 import subprocess
 import sys
 
-from hypertrade.artifacts import load_run_table, list_benchmark_suites, list_experiment_runs, run_benchmark_suite as _run_benchmark_suite
+from hypertrade.experiments.artifacts import load_run_table, list_benchmark_suites, list_experiment_runs
+from hypertrade.experiments.benchmarks import run_benchmark_suite as _run_benchmark_suite
 from hypertrade.config.schemas import FilterSearchSpace, ObjectiveProfile, OptimizationRunConfig
-from hypertrade.optimization import run_optimization as _run_optimization
+from hypertrade.optimization.runner import run_optimization as _run_optimization
 
 
 def optimize_run(
@@ -54,7 +55,7 @@ def launch_dashboard() -> int:
     if env.get("PYTHONPATH"):
         python_path_entries.append(env["PYTHONPATH"])
     env["PYTHONPATH"] = os.pathsep.join(python_path_entries)
-    return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app_path)], env=env)
+    return subprocess.call([sys.executable, "-m", "streamlit", "run", str(app_path)], env=env, cwd=repo_root)
 
 
 def load_run(run_dir: str | Path) -> dict:

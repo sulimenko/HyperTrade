@@ -7,9 +7,9 @@ import json
 
 CANDIDATE_POLICY_MODES = {
     "utopia_distance",
-    "max_total_pnl",
+    "max_sum_trade_returns_pct",
     "max_profit_factor",
-    "min_max_drawdown",
+    "min_proxy_drawdown_usd",
     "min_avg_hold_minutes",
 }
 
@@ -138,8 +138,31 @@ class FilterSearchSpace:
     slippage: float = 0.0004
     bar_minutes: int = 15
 
+    def __post_init__(self):
+        import math
+        for key, value in asdict(self).items():
+            if isinstance(value, (int, float)) and not math.isfinite(value):
+                raise ValueError(f'Non-finite search parameter: {key}')
+            if key.endswith('_min'):
+                upper = getattr(self, key[:-4]+'_max', value)
+                if value < 0 or value > upper:
+                    raise ValueError(f'Invalid search range: {key}')
+            if key.endswith('_step') and value <= 0:
+                raise ValueError(f'Step must be positive: {key}')
+        if self.sl_min <= 0 or self.tp_min <= 0 or self.max_signals_per_side_min < 1:
+            raise ValueError('SL, TP and side cap must be positive')
+        if self.commission < 0 or not 0 <= self.slippage < 1 or self.bar_minutes != 15:
+            raise ValueError('Require nonnegative USD/share fee, fractional slippage and 15-minute bars')
+        if self.time_gate_use and self.accept_start_max >= self.accept_end_max:
+            raise ValueError('Time gate needs an end after every possible start')
+        if not self.ranking_mode_choices or set(self.ranking_mode_choices)-{'none','strength'}:
+            raise ValueError('Unsupported ranking modes')
+
     @classmethod
     def from_dict(cls, payload: dict[str, Any]) -> "FilterSearchSpace":
+        unknown = set(payload)-set(cls.__dataclass_fields__)
+        if unknown:
+            raise ValueError(f'Unknown search parameters: {sorted(unknown)}')
         known = {field_name: payload[field_name] for field_name in cls.__dataclass_fields__ if field_name in payload}
         return cls(**known)
 

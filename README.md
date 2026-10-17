@@ -1,148 +1,53 @@
-# HyperTrade
+# HyperTrade Research
 
-HyperTrade is a research-lab for optimizing filters over existing external trading signals.
+EXPERIMENTAL external CSV signal research on CPython 3.14. Compare an unfiltered robot baseline with filtered candidates using multi-objective Optuna / NSGA-II and a Pareto frontier. Results separate fixed-nominal research quality from capacity-limited portfolio equity.
 
-Phase 1 is intentionally narrow:
+## Install
 
-- input is an existing signal CSV from a client robot or working strategy;
-- the system optimizes filters, acceptance policy, delay, and confirmation logic on top of those signals;
-- optimization is true multi-objective Optuna with Pareto output;
-- results are stored as reproducible artifact bundles;
-- analysis happens in a Streamlit + Plotly dashboard.
+Use a CPython 3.14 interpreter. On macOS with Homebrew installed:
 
-What this repository is not doing in phase 1:
-
-- native signal generation as the main workflow;
-- portfolio allocation or capital sizing;
-- live execution;
-- walk-forward validation;
-- weighted-score optimization.
-
-## Architecture
-
-The active implementation lives in `hypertrade/`.
-
-High-level layout:
-
-- `hypertrade/data`: signal and market-data loading
-- `hypertrade/features`: indicator hydration
-- `hypertrade/signals`: filter space and signal acceptance policy
-- `hypertrade/simulation`: trade simulation and metrics
-- `hypertrade/optimization`: Optuna multi-objective study runner and Pareto handling
-- `hypertrade/artifacts.py`: artifact registry and benchmark harness
-- `hypertrade/ui`: Streamlit dashboard
-
-The supported runtime surface is the root entrypoints plus `hypertrade/`.
-
-Module docs:
-
-- [Data](doc/modules/data.md)
-- [Features](doc/modules/features.md)
-- [Signals](doc/modules/signals.md)
-- [Simulation](doc/modules/simulation.md)
-- [Optimization](doc/modules/optimization.md)
-- [Experiments](doc/modules/experiments.md)
-- [Reporting](doc/modules/reporting.md)
-- [UI](doc/modules/ui.md)
-
-## Requirements
-
-- Python 3 with a project virtual environment
-- dependencies installed from [requirements.txt]
-- benchmark inputs:
-  - `benchmarks/fixtures/PF20250597.csv`
-  - `benchmarks/fixtures/signals.csv`
-
-Set up a clean local environment:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -r requirements.txt
+```sh
+/opt/homebrew/opt/python@3.14/bin/python3.14 -m venv .venv
+.venv/bin/python -m pip install -r requirements-dev.txt
 ```
 
-Conda can still be used as a personal local environment, but the official project commands use the active standard Python environment.
+On other platforms, substitute `python3.14 -m venv .venv` and the platform's virtual-environment Python path. Runtime and transitive dependencies are pinned in `requirements.txt`; `requirements-dev.txt` adds pytest. Installation requires access to PyPI. No system package upgrade or removal is performed by the project.
 
-## CLI
-
-Run one optimization:
-
-```bash
-python run_optimize.py \
-  --signals benchmarks/fixtures/PF20250597.csv \
-  --n_trials 25 \
-  --benchmark_name PF20250597 \
-  --run_label PF20250597_manual
+```sh
+.venv/bin/python run_optimize.py --signals benchmarks/fixtures/PF20250597.csv --n_trials 20
+.venv/bin/python run_benchmarks.py --n_trials 1
+.venv/bin/python run_dashboard.py
+bash doc/ai/project-checks.sh
+CHECK_MODE=benchmark bash doc/ai/project-checks.sh
 ```
 
-`benchmark_name` identifies the dataset family for comparison. `run_label` names the specific run directory and study.
+`PYTHON_BIN` can override the interpreter in checks; it must be Python 3.14. Both CLIs print the artifact directory; failed runs/suites exit nonzero. `no_valid_candidates` is a valid research outcome and exits zero.
 
-Run the required benchmark suite:
+## Data and models
 
-```bash
-python run_benchmarks.py --n_trials 1
-```
+CSV is semicolon-separated, with `datetime`, `long_symbols` (or `symbols`) and optional `short_symbols`. The historical fixture spelling `shotr_symbols` is also read. ISO and `dd.mm.yyyy` dates are accepted. Naive dates explicitly mean UTC; timezone offsets preserve their instant. Equal timestamps are grouped, symbols deduplicated per side, and signals sorted. Inputs are never rewritten.
 
-Launch the dashboard:
+Research runs read local `data/ohlc/*.parquet` and `data/indicators/*.parquet`. They never download or overwrite source data. Missing market files are explicit eligibility rejections. Additional indicator columns go into `data/cache/indicators`; uploaded CSVs go into `data/cache/uploads`. The existing RTH-only source uses UTC-day VWAP unchanged. Full indicator-cache invalidation is deferred.
 
-```bash
-python run_dashboard.py
-```
+- **Research / Normalized:** unlimited budget, identical $10,000 nominal for baseline and candidates, fractional analytical exposure. `sum_trade_returns_pct` is a sum of percentage points, **not** a return on capital. Net PnL, mean/median trade return, win rate, profit factor and a deterministic sequential proxy drawdown are available.
+- **Capital / Portfolio:** $100,000 initial equity, maximum $10,000 gross notional per position, affordable integer shares, entry/exit commission in USD/share/side and separate directional fractional slippage. Long notional and 100% short collateral are reserved; short proceeds remain locked. Time equity includes realized and unrealized PnL; drawdown is a percentage of peak equity.
+
+Every study saves a fixed baseline without indicator filters, time gate, ranking, cap or cooldown. Its SL/TP/delay/holding settings use the configured search minima and are persisted. Candidate improvements can include both filters and exit tuning. Both models use the same costs and nominal settings. See [simulation semantics](doc/simulation.md).
 
 ## Dashboard
 
-The dashboard currently includes:
+Streamlit + Plotly use a dark navy institutional research theme throughout five views:
 
-- `Overview`: recent runs, run activity, top Pareto candidates, benchmark suite status
-- `Experiments`: run table with benchmark/date/profile/study-size filters
-- `Launcher`: benchmark selection, objective-profile selection, search-space editor, run trigger
-- `Objectives`: objective/constraint editor and saved profile management
-- `Pareto`: 2D/3D frontier views, interaction matrix, correlation heatmap
-- `Trials`: trial metric trends and parameter interaction plots
-- `Trades`: equity, drawdown, rolling win rate, long/short split, weekday/hour analysis
-- `Filters`: acceptance funnel, cumulative signal PnL, side/time acceptance views
-- `Benchmarks`: benchmark suite inspection and run-to-run comparison
+1. Research Home: experiment explorer, latest run and baseline status.
+2. New Experiment: CSV source/upload, objective profile, full search configuration and start.
+3. Optimizer Explorer: 3D/2D Pareto, selectable axes/color, trial statuses, table/selector fallback for 3D, session shortlist.
+4. Candidate Analysis: linked Pareto candidate, baseline comparison, normalized/portfolio curves, outcomes, rejections and settings.
+5. Compare & Validation: benchmark evidence, run comparison and objective profiles.
 
-## Artifact Model
+No demo results are generated. Walk-forward/OOS validation is not implemented. See [UI guide](doc/ui_guide.md).
 
-Each optimization run writes one stable bundle under `artifacts/experiments/<run_id>/`.
+## Development and delivery
 
-Core files:
+Responsibilities and artifact schema: [architecture](doc/architecture.md), [artifacts](doc/artifacts.md), [Pareto objectives](doc/objectives_and_pareto.md). There is one public API in `hypertrade/api.py` and no alternate historical results reader.
 
-- `manifest.json` and `manifest.yaml`
-- `objective_profile.json` and `objective_profile.yaml`
-- `search_space.json` and `search_space.yaml`
-- `benchmark_profile.json`
-- `metrics_summary.json`
-- `environment.json`
-- `artifact_index.json`
-- `logs.txt`
-- `study.sqlite3`
-- `trials.parquet`
-- `pareto_trials.parquet`
-- `candidate_shortlist.parquet`
-- `trades.parquet`
-- `signal_stats.parquet`
-
-Benchmark suite runs write a summary bundle under `artifacts/benchmarks/<suite_id>/`.
-
-Detailed docs:
-
-- [Architecture and Scope](doc/architecture.md)
-- [Artifacts and Metadata](doc/artifacts.md)
-- [Benchmarks](doc/benchmarks.md)
-- [Objective Profiles and Pareto Workflow](doc/objectives_and_pareto.md)
-- [UI Guide](doc/ui_guide.md)
-- [Phase 2 Deferred Work](doc/phase2_deferred.md)
-
-## Current Status
-
-Phase 1 implementation now includes:
-
-- multi-objective optimization in place of the old weighted score;
-- objective profile editing in UI;
-- modular dashboard pages;
-- benchmark suite runner for `PF20250597` and `signals`;
-- benchmark suite status distinguishes valid frontier runs from `no_valid_candidates`;
-- strengthened artifact schema and metadata contract;
-- regression coverage for BB/ADX contracts, acceptance policy, registry, benchmark flow, optimizer end-to-end, and UI data loading.
+T-194 is one AI Pipeline v8.5 task. Use the installed `~/.ai-pipeline-v85/bin/ai-pipeline`; local legacy task queues/scripts were removed. Independent checks, review of the exact Pipeline-owned commit, and Draft PR are required before delivery. Executor never commits, pushes, merges or deploys. Old queue tasks T-003/T-004 are superseded and must not run. See [pipeline](doc/ai/pipeline.md).

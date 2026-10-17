@@ -6,7 +6,7 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from hypertrade.artifacts import list_benchmark_suites, list_experiment_runs
+from hypertrade.experiments.artifacts import list_benchmark_suites, list_experiment_runs
 from hypertrade.ui import state
 
 
@@ -43,13 +43,13 @@ class UiDataFlowTests(unittest.TestCase):
                 json.dumps(
                     {
                         "pareto_candidate_count": 3,
-                        "best_shortlist_total_pnl": 12.0,
+                        "best_shortlist_sum_trade_returns_pct": 12.0,
                         "best_shortlist_profit_factor": 1.4,
                         "best_shortlist_min_drawdown": 2.0,
                     }
                 )
             )
-            pd.DataFrame([{"number": 0, "total_pnl": 12.0}]).to_parquet(run_dir / "candidate_shortlist.parquet", index=False)
+            pd.DataFrame([{"number": 0, "sum_trade_returns_pct": 12.0}]).to_parquet(run_dir / "candidate_shortlist.parquet", index=False)
 
             (suite_dir / "manifest.json").write_text(
                 json.dumps(
@@ -93,7 +93,7 @@ class UiDataFlowTests(unittest.TestCase):
 
             self.assertEqual(state_runs.iloc[0]["run_id"], run_dir.name)
             self.assertEqual(state_suites.iloc[0]["suite_id"], suite_dir.name)
-            self.assertEqual(metrics["best_shortlist_total_pnl"], 12.0)
+            self.assertEqual(metrics["best_shortlist_sum_trade_returns_pct"], 12.0)
             self.assertEqual(len(shortlist), 1)
 
 

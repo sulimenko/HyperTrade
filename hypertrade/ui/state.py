@@ -5,34 +5,16 @@ import json
 
 import pandas as pd
 
-from hypertrade.artifacts import list_benchmark_suites, list_experiment_runs, load_run_table
-from hypertrade.config import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJECTIVE_PROFILE, FilterSearchSpace, ObjectiveProfile
+from hypertrade.experiments.artifacts import list_benchmark_suites, list_experiment_runs, load_run_table
 
 ARTIFACT_ROOT = Path("artifacts/experiments")
 BENCHMARK_ROOT = Path("artifacts/benchmarks")
-PROFILE_ROOT = Path("artifacts/objective_profiles")
-SEARCH_SPACE_ROOT = Path("artifacts/search_spaces")
-PROFILE_ROOT.mkdir(parents=True, exist_ok=True)
-SEARCH_SPACE_ROOT.mkdir(parents=True, exist_ok=True)
-BENCHMARK_ROOT.mkdir(parents=True, exist_ok=True)
+PROFILE_ROOT = Path('config/defaults/profiles')
 
 DEFAULT_BENCHMARKS = {
     "PF20250597": "benchmarks/fixtures/PF20250597.csv",
     "signals": "benchmarks/fixtures/signals.csv",
 }
-
-
-def _ensure_default_profiles() -> None:
-    default_profile_path = PROFILE_ROOT / f"{DEFAULT_OBJECTIVE_PROFILE.name}.json"
-    if not default_profile_path.exists():
-        DEFAULT_OBJECTIVE_PROFILE.save(default_profile_path)
-
-    default_search_path = SEARCH_SPACE_ROOT / "default_search_space.json"
-    if not default_search_path.exists():
-        DEFAULT_FILTER_SEARCH_SPACE.save(default_search_path)
-
-
-_ensure_default_profiles()
 
 
 def run_options() -> pd.DataFrame:
@@ -47,13 +29,6 @@ def load_manifest(run_dir: str) -> dict:
     path = Path(run_dir) / "manifest.json"
     if not path.exists():
         return {}
-    return json.loads(path.read_text())
-
-
-def load_objective_profile_for_run(run_dir: str) -> dict:
-    path = Path(run_dir) / "objective_profile.json"
-    if not path.exists():
-        return DEFAULT_OBJECTIVE_PROFILE.to_dict()
     return json.loads(path.read_text())
 
 
