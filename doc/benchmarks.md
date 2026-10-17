@@ -1,35 +1,11 @@
-# Benchmarks
+# Benchmark smoke
 
-## Required Benchmark Inputs
-
-Phase 1 benchmark coverage is based on:
-
-- `benchmarks/fixtures/PF20250597.csv`
-- `benchmarks/fixtures/signals.csv`
-
-These are the required benchmark datasets for smoke validation and dashboard comparison.
-
-## Run the Benchmark Suite
-
-```bash
-python run_benchmarks.py --n_trials 1
+```sh
+CHECK_MODE=benchmark bash doc/ai/project-checks.sh
 ```
 
-This command:
+Runs existing checks, then one seeded NSGA-II trial plus baseline on each unchanged `benchmarks/fixtures/PF20250597.csv` and `benchmarks/fixtures/signals.csv`. No input CSV, source OHLC or source indicator is rewritten. Local market-data coverage determines eligibility; missing files are visible rejections.
 
-- runs the selected benchmark inputs sequentially;
-- creates full optimization artifact bundles under `artifacts/experiments/`;
-- creates one suite summary bundle under `artifacts/benchmarks/`.
+Each study must persist a full schema-3 bundle. The suite links study paths and records success/no_valid_candidates/failed and artifact completeness. A failed or incomplete study causes a nonzero CLI exit. A correct study with no candidates remains a successful smoke outcome, rather than a forced profitable result.
 
-## What to Check After a Run
-
-- both benchmark rows exist in `benchmark_runs.parquet`;
-- `status` is `success` for each required dataset;
-- if a dataset technically runs but produces no valid Pareto candidates, status must be `no_valid_candidates`, not `success`;
-- `artifact_complete` is `true`;
-- benchmark runs appear in the dashboard under `Benchmarks`;
-- suite summary appears in the dashboard under `Benchmark Suites`.
-
-## Current Caveat
-
-`signals.csv` may finish as `no_valid_candidates` if no trades survive constraints. That is a research outcome, not a benchmark-runner failure.
+The first fixture uses ISO dates; the loader additionally accepts dd.mm.yyyy and preserves explicit UTC instants. The second historical fixture's `shotr_symbols` spelling is supported read-only. Numbers from the former execution/statistics schema are superseded by T-194 and should not be compared directly.

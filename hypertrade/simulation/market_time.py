@@ -5,10 +5,10 @@ from datetime import datetime
 import exchange_calendars as xcals
 import numpy as np
 import pandas as pd
-import pytz
+from datetime import timezone
 
 XNYS = xcals.get_calendar("XNYS")
-UTC = pytz.UTC
+UTC = timezone.utc
 
 
 def _to_utc_ts(dt: datetime) -> pd.Timestamp:
@@ -21,7 +21,7 @@ def _to_utc_ts(dt: datetime) -> pd.Timestamp:
 def build_market_cache(dt_min, dt_max, extra_days: int = 30):
     t0 = _to_utc_ts(dt_min).normalize() - pd.Timedelta(days=10)
     t1 = _to_utc_ts(dt_max).normalize() + pd.Timedelta(days=int(extra_days))
-    sched = XNYS.schedule.loc[t0.date() : t1.date()]
+    sched = XNYS.schedule.loc[t0.tz_localize(None) : t1.tz_localize(None)]
     if "open" in sched.columns and "close" in sched.columns:
         opens = sched["open"]
         closes = sched["close"]
@@ -97,7 +97,7 @@ def add_market_minutes(entry_ts_utc: pd.Timestamp, minutes: int) -> pd.Timestamp
         horizon_days = max(360, int(remaining / 300) + 30)
         start = t.normalize() - pd.Timedelta(days=10)
         end = t.normalize() + pd.Timedelta(days=horizon_days)
-        sched = XNYS.schedule.loc[start.date() : end.date()]
+        sched = XNYS.schedule.loc[start.tz_localize(None) : end.tz_localize(None)]
         advanced = False
         for _, row in sched.iterrows():
             if "open" in row:

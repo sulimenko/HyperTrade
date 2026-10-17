@@ -1,5 +1,4 @@
-from hypertrade.ui.streamlit_app import main
+from hypertrade.ui.app import main
 
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     main()

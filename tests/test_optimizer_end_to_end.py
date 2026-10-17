@@ -9,9 +9,12 @@ from unittest.mock import patch
 import pandas as pd
 
 import run_optimize
-from hypertrade.config import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJECTIVE_PROFILE, ConstraintRule, ObjectiveProfile, OptimizationRunConfig
-from hypertrade.artifacts import REQUIRED_RUN_ARTIFACTS, load_run_table, validate_run_artifacts
-from hypertrade.optimization import run_optimization
+from hypertrade.config.defaults import DEFAULT_FILTER_SEARCH_SPACE, DEFAULT_OBJECTIVE_PROFILE, ConstraintRule, ObjectiveProfile, OptimizationRunConfig
+from hypertrade.experiments.artifacts import REQUIRED_RUN_ARTIFACTS, load_run_table, validate_run_artifacts
+from hypertrade.optimization.runner import run_optimization
+from hypertrade.simulation.backtest import BacktestResult
+from hypertrade.simulation.metrics import compute_metrics, sequential_curve
+from hypertrade.simulation.portfolio import portfolio_equity
 
 
 def _synthetic_signals() -> list[dict]:
@@ -53,7 +56,7 @@ def _synthetic_backtest(signals, params):
             "symbols_total": 2,
             "symbols_traded": 1,
             "symbols_rejected": 1,
-            "total_pnl": pnl,
+            "sum_trade_returns_pct": pnl,
             "avg_pnl": pnl,
             "input_long": 2,
             "input_short": 0,
@@ -65,20 +68,25 @@ def _synthetic_backtest(signals, params):
         }
     ]
     metrics = {
-        "total_pnl": pnl,
-        "max_drawdown": drawdown,
+        "sum_trade_returns_pct": pnl,
+        "proxy_drawdown_usd": drawdown,
         "profit_factor": profit_factor,
         "avg_hold_minutes": hold_minutes,
         "trades": float(len(trades) + 25),
         "calmar": pnl / drawdown,
         "cvar_5": -0.02,
     }
-    return trades, signal_stats, metrics
+    # Reuse the existing synthetic outcomes; artifact assertions exercise the full owner result.
+    metrics = {**metrics, **compute_metrics(trades,params), 'trades':26.0,
+               'portfolio_return_pct':1.0,'portfolio_max_drawdown_pct':0.5,'portfolio_trade_count':1.0}
+    metrics['profit_factor'] = profit_factor
+    equity,_ = portfolio_equity([],{},params.initial_capital)
+    return BacktestResult(trades,signal_stats,metrics,[],[],equity,sequential_curve(trades))
 
 
 class OptimizerEndToEndTests(unittest.TestCase):
-    @patch("hypertrade.optimization.run_backtest", side_effect=_synthetic_backtest)
-    @patch("hypertrade.optimization.load_external_signals", side_effect=lambda _: _synthetic_signals())
+    @patch("hypertrade.optimization.runner.evaluate", side_effect=_synthetic_backtest)
+    @patch("hypertrade.optimization.runner.load_external_signals", side_effect=lambda _: _synthetic_signals())
     def test_run_optimization_persists_complete_bundle(self, _mock_signals, _mock_backtest) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             run_dir = run_optimization(
@@ -102,6 +110,9 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertEqual(manifest["run_label"], "synthetic_e2e")
             self.assertEqual(manifest["n_trials"], 3)
             self.assertEqual(manifest["objective_profile_name"], DEFAULT_OBJECTIVE_PROFILE.name)
+            self.assertEqual(manifest['status'],'success')
+            self.assertTrue((run_dir/'baseline_trades.parquet').is_file())
+            self.assertEqual(json.loads((run_dir/'baseline_metrics.json').read_text())['normalized_notional_usd'],10000)
             self.assertIn("config_hashes", manifest)
             self.assertIn("data_hashes", manifest)
 
@@ -123,8 +134,8 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertIn("candidate_trial", trades_df.columns)
             self.assertIn("candidate_trial", signal_stats_df.columns)
 
-    @patch("hypertrade.optimization.run_backtest", side_effect=_synthetic_backtest)
-    @patch("hypertrade.optimization.load_external_signals", side_effect=lambda _: _synthetic_signals())
+    @patch("hypertrade.optimization.runner.evaluate", side_effect=_synthetic_backtest)
+    @patch("hypertrade.optimization.runner.load_external_signals", side_effect=lambda _: _synthetic_signals())
     def test_invalid_trials_are_pruned_from_pareto_outputs(self, _mock_signals, _mock_backtest) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             impossible_profile = ObjectiveProfile(
@@ -152,6 +163,7 @@ class OptimizerEndToEndTests(unittest.TestCase):
             self.assertTrue((pareto_df.get("constraint_violations", pd.Series(dtype=str)).fillna("") == "").all())
             self.assertEqual(summary["pareto_candidate_count"], len(pareto_df))
             self.assertGreaterEqual(summary["pruned_trial_count"], 1)
+            self.assertEqual(summary['status'],'no_valid_candidates')
 
     @patch("run_optimize.optimize_run", return_value=Path("/tmp/demo_run"))
     def test_run_optimize_cli_prints_run_dir(self, mock_run_optimization) -> None:
@@ -176,3 +188,62 @@ class OptimizerEndToEndTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def test_unexpected_trial_error_is_failed_with_complete_diagnostic_bundle(tmp_path):
+    from hypertrade.simulation.backtest import evaluate
+    calls=0
+    def broken_after_baseline(signals,params):
+        nonlocal calls
+        calls+=1
+        if calls==1:
+            return evaluate([],params)
+        raise RuntimeError('execution failure sentinel')
+    with patch('hypertrade.optimization.runner.load_external_signals',return_value=_synthetic_signals()), \
+         patch('hypertrade.optimization.runner.evaluate',side_effect=broken_after_baseline):
+        run=run_optimization(OptimizationRunConfig(signals_path='benchmarks/fixtures/PF20250597.csv',n_trials=1,artifacts_root=str(tmp_path)))
+    assert validate_run_artifacts(run)==(True,[])
+    assert json.loads((run/'manifest.json').read_text())['status']=='failed'
+    assert load_run_table(run,'trials.parquet').iloc[0]['state']=='FAIL'
+    errors=json.loads((run/'errors.json').read_text())['errors']
+    assert 'RuntimeError: execution failure sentinel' in errors[0]['traceback']
+    assert 'broken_after_baseline' in errors[0]['traceback']
+
+
+def test_missing_market_history_fails_upfront_and_preparation_stays_separate(tmp_path):
+    import pytest
+    from hypertrade.data import market
+    stamp = pd.Timestamp('2025-07-10T14:00:00Z')
+    frame = pd.DataFrame(dict(datetime=pd.date_range(stamp-pd.Timedelta(minutes=15), periods=4, freq='15min'),
+                              open=100., high=101., low=99., close=100.))
+    csv = tmp_path/'external.csv'
+    csv.write_text('datetime;long_symbols;short_symbols\n2025-07-10T14:00:00Z;NEW_US_SYMBOL;\n')
+    source = tmp_path/'source'
+    staged = tmp_path/'staged'
+    config = OptimizationRunConfig(signals_path=str(csv), n_trials=1, artifacts_root=str(tmp_path/'runs'))
+    with patch.object(market, 'MARKET_PATH', source), patch.object(market, 'PREPARED_PATH', staged), \
+         patch.object(market.requests, 'get', side_effect=AssertionError('Research must not fetch')), \
+         patch.object(market.requests, 'post', side_effect=AssertionError('Research must not fetch')):
+        failed = run_optimization(config)
+        assert json.loads((failed/'manifest.json').read_text())['status']=='failed'
+        errors = json.loads((failed/'errors.json').read_text())['errors']
+        assert errors[0]['stage']=='market_data_preparation'
+        assert 'NEW_US_SYMBOL' in errors[0]['error'] and '--signals <CSV>' in errors[0]['error']
+        assert load_run_table(failed, 'trials.parquet').empty
+        with pytest.raises(market.MissingMarketDataError, match='DATA_BASE_URL is not configured'):
+            market.prepare_market_history('NEW_US_SYMBOL', stamp)
+        # Extend an insufficient immutable source into a separate staged history.
+        source.mkdir()
+        original = source/'NEW_US_SYMBOL.parquet'
+        frame.iloc[2:].to_parquet(original, index=False)
+        original_bytes = original.read_bytes()
+        with patch.object(market, 'fetch_market_data', return_value=frame):
+            prepared = market.prepare_market_history('NEW_US_SYMBOL', stamp, base_url='http://configured-source')
+        assert prepared.parent==staged and original.read_bytes()==original_bytes
+        # Complete prepared data is usable without an API, including another preparation.
+        assert market.prepare_market_history('NEW_US_SYMBOL', stamp)==prepared
+        assert market.ensure_market_history('NEW_US_SYMBOL', stamp).datetime.min()==frame.datetime.min()
+        ready = run_optimization(config)
+        assert json.loads((ready/'manifest.json').read_text())['status']=='no_valid_candidates'
+        assert not json.loads((ready/'errors.json').read_text())['errors']
+        assert validate_run_artifacts(ready)==(True, [])

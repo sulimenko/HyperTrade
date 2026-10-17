@@ -6,16 +6,12 @@ from unittest.mock import patch
 
 import pandas as pd
 
-from hypertrade.artifacts import (
+from hypertrade.experiments.artifacts import REQUIRED_RUN_ARTIFACTS, validate_run_artifacts, list_benchmark_suites, list_experiment_runs, load_run_table
+from hypertrade.experiments.benchmarks import (
     BENCHMARKS,
     ExperimentRegistry,
-    REQUIRED_RUN_ARTIFACTS,
-    list_benchmark_suites,
-    list_experiment_runs,
-    load_run_table,
     run_benchmark_suite,
     smoke_run_config,
-    validate_run_artifacts,
 )
 
 
@@ -31,9 +27,9 @@ class RegistryAndBenchmarksTests(unittest.TestCase):
             registry.save_text(run_dir / "logs.txt", "hello")
             registry.save_study_tables(
                 run_dir,
-                pd.DataFrame([{"number": 1, "total_pnl": 10.0}]),
-                pd.DataFrame([{"number": 1, "total_pnl": 10.0}]),
-                pd.DataFrame([{"number": 1, "total_pnl": 10.0}]),
+                pd.DataFrame([{"number": 1, "sum_trade_returns_pct": 10.0}]),
+                pd.DataFrame([{"number": 1, "sum_trade_returns_pct": 10.0}]),
+                pd.DataFrame([{"number": 1, "sum_trade_returns_pct": 10.0}]),
             )
 
             self.assertTrue((run_dir / "manifest.json").exists())
@@ -98,12 +94,17 @@ class RegistryAndBenchmarksTests(unittest.TestCase):
                 registry.save_json(run_dir / "search_space.json", {})
                 registry.save_yaml(run_dir / "search_space.yaml", {})
                 registry.save_json(run_dir / "benchmark_profile.json", {"benchmark_name": "PF20250597"})
-                registry.save_json(run_dir / "metrics_summary.json", {"pareto_candidate_count": 1, "best_shortlist_total_pnl": 5.0})
+                registry.save_json(run_dir / "metrics_summary.json", {"pareto_candidate_count": 1, "best_shortlist_sum_trade_returns_pct": 5.0})
                 registry.save_json(run_dir / "environment.json", registry.build_environment_snapshot())
                 registry.save_text(run_dir / "logs.txt", "ok")
                 registry.save_text(run_dir / "study.sqlite3", "")
                 for table_name in ("trials.parquet", "pareto_trials.parquet", "candidate_shortlist.parquet", "trades.parquet", "signal_stats.parquet"):
                     registry.save_table(run_dir / table_name, pd.DataFrame([{"number": 0}]))
+                for name in REQUIRED_RUN_ARTIFACTS:
+                    target = run_dir/name
+                    if not target.exists():
+                        if name.endswith('.parquet'): registry.save_table(target,pd.DataFrame())
+                        else: registry.save_json(target,{})
                 registry.save_json(run_dir / "artifact_index.json", {"run_id": run_dir.name, "artifacts": registry.artifact_inventory(run_dir)})
                 return run_dir
 
@@ -134,8 +135,8 @@ class RegistryAndBenchmarksTests(unittest.TestCase):
                 run_dir = registry.create_run_dir("signals")
                 registry.save_json(run_dir / "manifest.json", {"benchmark_name": "signals", "signals_path": "benchmarks/fixtures/signals.csv"})
                 registry.save_yaml(run_dir / "manifest.yaml", {"benchmark_name": "signals", "signals_path": "benchmarks/fixtures/signals.csv"})
-                registry.save_json(run_dir / "objective_profile.json", {"name": "demo", "objectives": [{"metric": "total_pnl", "direction": "maximize"}]})
-                registry.save_yaml(run_dir / "objective_profile.yaml", {"name": "demo", "objectives": [{"metric": "total_pnl", "direction": "maximize"}]})
+                registry.save_json(run_dir / "objective_profile.json", {"name": "demo", "objectives": [{"metric": "sum_trade_returns_pct", "direction": "maximize"}]})
+                registry.save_yaml(run_dir / "objective_profile.yaml", {"name": "demo", "objectives": [{"metric": "sum_trade_returns_pct", "direction": "maximize"}]})
                 registry.save_json(run_dir / "search_space.json", {})
                 registry.save_yaml(run_dir / "search_space.yaml", {})
                 registry.save_json(run_dir / "benchmark_profile.json", {"benchmark_name": "signals"})
@@ -145,6 +146,11 @@ class RegistryAndBenchmarksTests(unittest.TestCase):
                 registry.save_text(run_dir / "study.sqlite3", "")
                 for table_name in ("trials.parquet", "pareto_trials.parquet", "candidate_shortlist.parquet", "trades.parquet", "signal_stats.parquet"):
                     registry.save_table(run_dir / table_name, pd.DataFrame())
+                for name in REQUIRED_RUN_ARTIFACTS:
+                    target = run_dir/name
+                    if not target.exists():
+                        if name.endswith('.parquet'): registry.save_table(target,pd.DataFrame())
+                        else: registry.save_json(target,{})
                 registry.save_json(run_dir / "artifact_index.json", {"run_id": run_dir.name, "artifacts": []})
                 return run_dir
 

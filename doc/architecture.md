@@ -1,71 +1,26 @@
-# Architecture and Scope
+# Architecture — T-194
 
-## Purpose
+One Python pipeline accepts external CSV signals, evaluates a fixed baseline, samples candidate settings with NSGA-II, and persists a schema-3 research bundle. Behavior is EXPERIMENTAL pending a separately approved Weekly Hardening task.
 
-HyperTrade phase 1 is a research-lab for improving existing trading signals by optimizing filters and acceptance rules.
+| Zone | Owner |
+| --- | --- |
+| Typed configuration, named indicator settings | `hypertrade/config/{schemas,strategy,defaults}.py` |
+| External CSV dates/grouping, read-only OHLC | `hypertrade/data/{signals,market}.py` |
+| Feature calculation, additional cached columns | `hypertrade/features/{indicators,indicator_cache}.py` |
+| Indicator rules, read-only time eligibility, ranking | `hypertrade/filters/{rules,acceptance,ranking}.py` |
+| Trading calendar, execution prices | `hypertrade/simulation/{market_time,trade_engine}.py` |
+| Research metrics, capital ledger/time equity, orchestration | `hypertrade/simulation/{metrics,portfolio,backtest}.py` |
+| Conditional sampling, Pareto selection, studies | `hypertrade/optimization/{search_space,pareto,runner}.py` |
+| Registry, benchmark orchestration, artifact readers | `hypertrade/experiments/{registry,benchmarks,artifacts}.py` |
+| Five views and shared chart/candidate components | `hypertrade/ui/{app,state,views,components}` |
+| Supported public calls | `hypertrade/api.py` |
 
-The primary workflow is:
+Package initializers contain no implementation. There is one CSV loader, one simulator and one results schema. Domain zones are modules rather than empty class hierarchies.
 
-1. load external signal CSVs;
-2. hydrate market data and indicators;
-3. apply filter and acceptance policies;
-4. simulate trades;
-5. compute metrics;
-6. run a multi-objective Optuna study;
-7. persist one artifact bundle per run;
-8. analyze results in the dashboard.
+`evaluate()` prepares technical candidates without reserving capital. Two independent admissions then process the same candidates: Research with no money limit, and Portfolio with fixed position sizing and available capital. Each model updates cooldown only after definitive acceptance. Research and portfolio counts can differ, including later cooldown effects.
 
-## Active Package Layout
+All timestamps are explicit UTC instants. Actual entry uses the first available candle open at or after the delayed market entry time. Calendar arithmetic counts market minutes. Events use candle-open time for entries/time exits/gap fills, candle-close time for other exits. Trading-day gaps have no synthetic interpolated prices.
 
-- `hypertrade/data`
-  - external signal loading
-  - market-data access
-  - indicator store access
-- `hypertrade/features`
-  - indicator hydration and feature preparation
-- `hypertrade/signals`
-  - filter parameter search space
-  - indicator filter definitions
-  - signal acceptance policy
-- `hypertrade/simulation`
-  - market-time handling
-  - trade simulation
-  - run metrics
-- `hypertrade/optimization`
-  - Optuna study runner
-  - Pareto candidate extraction and ranking
-- `hypertrade/artifacts.py`
-  - experiment registry
-  - benchmark harness
-  - run and suite loading for analytics
-- `hypertrade/ui`
-  - Streamlit app and pages
+The optimizer's objectives use research or explicitly named portfolio fields. No allocation sizes are optimized. The dashboard reads persisted Pareto candidate trades/equity and metadata rather than running a second analysis engine. Every Pareto candidate has linked artifacts; non-Pareto trials retain metrics/parameters/statuses in the trial table and SQLite study.
 
-Supported root entrypoints:
-
-- `run_optimize.py`
-- `run_benchmarks.py`
-- `run_dashboard.py`
-- `streamlit_app.py`
-
-## Core Product Decisions
-
-- weighted-score optimization is removed;
-- optimization is true multi-objective with Pareto output;
-- v1 works on existing external signals only;
-- backward compatibility with legacy result layout is not required;
-- walk-forward is explicitly deferred to phase 2;
-- no portfolio layer in phase 1.
-
-## Signal Optimization Scope
-
-Phase 1 optimizes:
-
-- indicator-based filters;
-- time-gated acceptance windows;
-- cooldown policy;
-- confirmation bars;
-- delay-open policy;
-- ranking and per-side signal caps.
-
-It does not yet implement native signal generation as the main product path.
+No live execution, signal generation, weighted objective optimizer, ML ranking, or portfolio allocation optimizer is included. [Limitations](phase2_deferred.md) and [execution assumptions](simulation.md) are explicit.

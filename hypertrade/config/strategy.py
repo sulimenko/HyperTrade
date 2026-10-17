@@ -15,7 +15,7 @@ DEFAULT_INDICATOR_CONFIG: IndicatorConfig = {
     "adx": {"enabled": False, "mode": None, "minimum": None, "period": None},
     "atr": {"enabled": False, "period": None},
     "macd": {"enabled": False, "sign": None, "fast": None, "slow": None, "signal": None},
-    "bb": {"enabled": False, "sign": None, "period": None, "std": None},
+    "bb": {"enabled": False, "mode": None, "period": None, "std": None, "lower": None, "upper": None},
     "donchian": {"enabled": False, "period": None},
     "vwap": {"enabled": False, "sign": None, "threshold": None},
 }
@@ -58,8 +58,8 @@ def validate_indicator_config(indicator_config: IndicatorConfig) -> None:
 
 @dataclass
 class StrategyParams:
-    sl: float | None = None
-    tp: float | None = None
+    sl: float | None = 2.0
+    tp: float | None = 3.0
     delay_open: int = 0
     holding_minutes: int = 600
     atr_use: bool = False
@@ -71,7 +71,6 @@ class StrategyParams:
     psar_step: float | None = None
     ts_enabled: bool = False
     ts_dist: float = 2.0
-    ts_step: float = 0.5
     confirm_bars: int = 1
     accept_start_minute: int | None = None
     accept_end_minute: int | None = None
@@ -81,6 +80,10 @@ class StrategyParams:
     bar_minutes: int = 15
     commission: float = 0.02
     slippage: float = 0.0004
+    normalized_notional: float = 10_000.0
+    initial_capital: float = 100_000.0
+    maximum_position_notional: float = 10_000.0
+    skip_filters: bool = False
     indicator_config: IndicatorConfig = field(default_factory=default_indicator_config)
 
     def __post_init__(self) -> None:

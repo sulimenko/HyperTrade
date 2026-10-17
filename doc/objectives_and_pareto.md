@@ -1,68 +1,19 @@
-# Objective Profiles and Pareto Workflow
+# Objective profiles and Pareto research
 
-## Objective Model
+`ObjectiveProfile` defines metric directions, optional min/max constraints and a preferred-candidate policy. NSGA-II is multi-objective; no weighted objective score is implemented. Defaults maximize `sum_trade_returns_pct` and `profit_factor`, minimize `proxy_drawdown_usd` and `avg_hold_minutes`, and require 20 trades / PF ≥1.05.
 
-HyperTrade now uses true multi-objective optimization.
+The sum is research percentage points across fixed-nominal trades. Proxy drawdown is normalized dollars on an entry-ordered sequential curve, anchored at zero PnL. Portfolio objectives explicitly use `portfolio_return_pct` and `portfolio_max_drawdown_pct` on shared chronological equity. Both labels and metric keys preserve this distinction.
 
-Typical objectives:
+Other catalog metrics include trade count and nonnegative `cvar_loss_5_pct` (minimize). Undefined PF with no losses is null; candidates requiring it as objective/constraint are pruned with a reason. No-trade and violated constraints are normal research outcomes. Unexpected exceptions become FAIL, with full diagnostics and a failed run status.
 
-- maximize `total_pnl`
-- minimize `max_drawdown`
-- maximize `profit_factor`
-- minimize `avg_hold_minutes`
+Every nondominated valid trial is retained. Preferred candidates are a subset selected by normalized Euclidean distance to the ideal point, or by a configured primary metric with that distance as tie-breaker. This is shortlist presentation, not a scalar optimization objective.
 
-Constraints are configured separately, for example:
+Conditional sampling omits disabled indicators, unused confirmation count, ranking when no ranked indicator is active, unused trailing step, and percentage SL/TP under ATR exits. Bollinger uses actual %B rules:
 
-- minimum trade count
-- minimum profit factor
+| Mode | Long | Short |
+| --- | --- | --- |
+| `avoid_extremes` | lower ≤ %B ≤ upper | lower ≤ %B ≤ upper |
+| `mean_reversion` | %B ≤ lower | %B ≥ upper |
+| `trend_continuation` | %B ≥ upper | %B ≤ lower |
 
-## Objective Profiles
-
-Objective profiles are stored under:
-
-```text
-artifacts/objective_profiles/
-```
-
-Each profile defines:
-
-- objective list
-- direction for each objective
-- constraint rules
-- candidate selection policy
-
-The default profile is `alpha_pareto_default`.
-
-## UI Workflow
-
-Use the `Objectives` page to:
-
-- load the current run profile or a saved profile;
-- select objective metrics;
-- choose maximize/minimize direction per metric;
-- edit constraints directly as rows of `metric / min_value / max_value`;
-- choose the preferred candidate policy;
-- save reusable profiles.
-
-Use the `Launcher` page to:
-
-- choose a benchmark or custom signal file;
-- choose a saved objective profile;
-- edit or load a search space;
-- start a new optimization run.
-
-## Pareto Workflow
-
-After a run:
-
-1. open `Pareto` to inspect the frontier;
-2. use 2D/3D plots to understand trade-offs;
-3. use the scatter matrix and correlation heatmap to inspect metric/parameter interactions;
-4. inspect `Closest to Utopia` for the currently preferred candidates;
-5. go to `Trades`, `Filters`, and `Trials` to validate how and why a candidate behaves.
-
-Important:
-
-- the preferred candidate is selected from the Pareto frontier;
-- supported candidate policies currently include `utopia_distance`, `max_total_pnl`, `max_profit_factor`, `min_max_drawdown`, and `min_avg_hold_minutes`;
-- that selection does not restore the old weighted-score optimizer.
+Both thresholds are sampled and change eligibility. There is no `bb_sign`. Existing RTH UTC-day VWAP and intentional entry OHLC/same-bar SL/TP assumptions are retained.

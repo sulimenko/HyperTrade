@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import json
 
 from hypertrade import run_benchmark_suite
 from hypertrade.config.schemas import FilterSearchSpace, ObjectiveProfile
-from hypertrade.artifacts import BENCHMARKS
+from hypertrade.experiments.benchmarks import BENCHMARKS
 
 
 def main() -> None:
@@ -31,6 +32,9 @@ def main() -> None:
         seed=args.seed,
     )
     print(suite_dir)
+    summary = json.loads((suite_dir/'summary.json').read_text())
+    if summary['failure_count'] or summary['artifact_complete_count'] != len(summary['benchmark_names']):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":
