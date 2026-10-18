@@ -4,8 +4,10 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from hypertrade.ui.components.charts import show, line
-from hypertrade.ui.components.selection import choose_candidate, selected_table
+from hypertrade.ui.components.selection import choose_candidate, choose_comparison, selected_table
 from hypertrade.ui.state import load_run_table_safe, load_json_file
+from hypertrade.ui.comparison import calendar_domain, realized_comparison
+from hypertrade.ui.components.formula import formula_help
 
 
 def render(run):
@@ -19,6 +21,33 @@ def render(run):
     pareto = load_run_table_safe(run,'pareto_trials.parquet')
     metrics = pareto[pareto['number']==number].iloc[0].to_dict()
     baseline = load_json_file(Path(run)/'baseline_metrics.json',{})
+    numbers = choose_comparison(run, pareto['number'].astype(int).tolist(), number)
+    formula_help()
+    base_trades = load_run_table_safe(run, 'baseline_trades.parquet')
+    all_trades = load_run_table_safe(run, 'trades.parquet')
+    signal_stats = load_run_table_safe(run, 'baseline_signal_stats.parquet')
+    period = None
+    try:
+        period = calendar_domain([base_trades, all_trades, signal_stats])
+        st.caption(f'Общий период сигналов и закрытий (UTC): {period[0]} — {period[1]}')
+        if not signal_stats.empty and 'datetime' in signal_stats:
+            dates = pd.to_datetime(signal_stats['datetime'], utc=True)
+            st.caption(f'Исследуемые сигналы (UTC): {dates.min()} — {dates.max()}')
+    except ValueError as exc:
+        st.warning(str(exc))
+    counts = []
+    for trial, row in [(None, baseline)] + [(n, pareto[pareto['number']==n].iloc[0].to_dict()) for n in dict.fromkeys([number]+numbers)]:
+        stats = signal_stats if trial is None else selected_table(run, 'signal_stats.parquet', trial)
+        input_count = int(stats['symbols_total'].sum()) if 'symbols_total' in stats and not stats.empty else None
+        accepted = row.get('trades')
+        pstats = load_run_table_safe(run, 'baseline_portfolio_signal_stats.parquet') if trial is None else selected_table(run, 'portfolio_signal_stats.parquet', trial)
+        portfolio_input = int(pstats['symbols_total'].sum()) if 'symbols_total' in pstats and not pstats.empty else None
+        portfolio_accepted = row.get('portfolio_trade_count')
+        counts.append({'Стратегия': 'Baseline' if trial is None else f'Trial {trial}', 'Исходные сигналы research': input_count,
+                       'Сделки research': accepted, 'Принято research · %': 100*accepted/input_count if input_count and accepted is not None else None,
+                       'Исходные сигналы portfolio': portfolio_input, 'Сделки portfolio': portfolio_accepted,
+                       'Принято portfolio · %': 100*portfolio_accepted/portfolio_input if portfolio_input and portfolio_accepted is not None else None})
+    st.dataframe(pd.DataFrame(counts), hide_index=True, width='stretch')
     model = st.radio('Statistics model',['Research / Normalized','Capital / Portfolio equity'],horizontal=True)
     research = model.startswith('Research')
     if research:
@@ -34,25 +63,46 @@ def render(run):
         col.metric(label, 'undefined' if value is None or pd.isna(value) else f'{value:,.2f}',
                    delta=f'{value-ref:+,.2f} vs baseline' if value is not None and ref is not None else None,
                    delta_color='inverse' if 'drawdown' in field else 'normal')
-    st.caption('Baseline has no filters or acceptance rules; its fixed exit settings are in Settings. Differences may include optimized exits as well as filters.')
+    st.caption('Baseline: без фильтров и acceptance rules, минимальные процентные SL/TP, delay и hold из поиска. Сравнение включает настройку выходов кандидата и не измеряет чистый эффект индикаторов. Research использует фиксированные $10,000 на сделку без ограничения бюджета; portfolio учитывает доступный капитал. Настройки baseline — во вкладке Settings.')
     tab1,tab2,tab3,tab4=st.tabs(['Curves & comparison','Trade outcomes','Admission funnel','Settings'])
     with tab1:
-        if research:
-            curve = selected_table(run,'sequential.parquet',number)
-            base = load_run_table_safe(run,'baseline_sequential.parquet')
-            y1,y2,x = 'cumulative_normalized_pnl','proxy_drawdown_usd','sequence'
+        index_mode = research and st.radio('Шкала сравнения', ['Календарное время закрытия', 'По порядку сделок'], horizontal=True) == 'По порядку сделок'
+        frames = []
+        if research and not index_mode:
+            by_label = {'Baseline': base_trades}
+            by_label.update({f'Trial {n}': selected_table(run, 'trades.parquet', n) for n in numbers})
+            try:
+                manifest = load_json_file(Path(run)/'manifest.json', {})
+                nominal = manifest.get('model', {}).get('normalized_notional_usd', baseline.get('normalized_notional_usd', 10000))
+                comparison = realized_comparison(by_label, period or (), nominal)
+                line(comparison, 'datetime', 'cumulative_normalized_pnl', 'Накопленный realized normalized PnL · USD · UTC', color='source', line_shape='hv', labels={'datetime':'Время закрытия · UTC', 'cumulative_normalized_pnl':'Накопленный PnL · USD', 'source':'Стратегия'})
+            except (ValueError, KeyError, TypeError) as exc:
+                st.error(f'Невозможно честно построить календарную кривую: {exc}')
+            st.caption('PnL учитывается только в exit_event_dt; для старых записей без него используется exit_dt (время свечи, точность ниже). Одновременные закрытия суммируются один раз. Все линии имеют общий старт с нуля и конечное плато; между закрытиями — последнее значение без новых сделок. Sequential proxy drawdown в таблице сохраняет исходный порядок входов и не пересчитывается по этой кривой.')
         else:
-            curve = selected_table(run,'equity.parquet',number)
-            base = load_run_table_safe(run,'baseline_equity.parquet')
-            y1,y2,x = 'equity_usd','drawdown_pct','datetime'
-        frames=[]
-        for frame,label in [(curve,'Filtered'),(base,'Baseline')]:
-            if not frame.empty:
-                frame=frame.copy();frame['source']=label;frames.append(frame)
-        if frames:
-            comparison = pd.concat(frames,ignore_index=True)
-            line(comparison,x,y1,'Sequential normalized PnL · USD' if research else 'Time equity · USD',color='source')
-            line(comparison,x,y2,'Sequential proxy drawdown · USD' if research else 'Portfolio drawdown · % of peak',color='source')
+            name = 'sequential.parquet' if research else 'equity.parquet'
+            base = load_run_table_safe(run, 'baseline_'+name)
+            curve = selected_table(run, name, number)
+            for frame, label in [(base, 'Baseline')] + [(selected_table(run, name, n), f'Trial {n}') for n in numbers]:
+                if not frame.empty:
+                    frame = frame.copy()
+                    frame['source'] = label
+                    frames.append(frame)
+            if frames:
+                comparison = pd.concat(frames, ignore_index=True)
+                if research:
+                    line(comparison, 'sequence', 'cumulative_normalized_pnl', 'PnL по порядку входа сделок · USD', color='source', labels={'sequence':'Номер допущенной сделки', 'cumulative_normalized_pnl':'PnL · USD', 'source':'Стратегия'})
+                    line(comparison, 'sequence', 'proxy_drawdown_usd', 'Sequential proxy drawdown · USD', color='source', labels={'sequence':'Номер допущенной сделки', 'proxy_drawdown_usd':'Proxy drawdown · USD', 'source':'Стратегия'})
+                    st.caption('X — номер допущенной сделки, не календарное время. Линии разной длины при разном количестве сделок; это не усечение backtest. Число сделок каждой стратегии показано выше. Порядок и значения сохранённого sequential.parquet не изменены.')
+                else:
+                    # Keep every saved mark and event phase, including duplicate times.
+                    # Only the shared display domain changes; no reindex or revaluation.
+                    domain = calendar_domain([comparison], period or ())
+                    for field, title in [('equity_usd','Portfolio equity · USD'), ('drawdown_pct','Portfolio drawdown · % of peak')]:
+                        fig = px.line(comparison, x='datetime', y=field, color='source', title=title)
+                        fig.update_xaxes(range=list(domain), title='Календарное время · UTC')
+                        show(fig)
+                    st.caption('Сохранённые mark-to-market, закрытия и порядок событий показаны без пересчёта. Общая область дат — только настройка отображения; отсутствующие equity-точки не заменяются синтетическими прибылями.')
         fields = ['trades','sum_trade_returns_pct','mean_trade_return_pct','median_trade_return_pct','win_rate_pct',
                   'profit_factor','normalized_pnl_usd','proxy_drawdown_usd'] if research else ['portfolio_trade_count','portfolio_pnl_usd','portfolio_return_pct','portfolio_max_drawdown_pct']
         comparison = pd.DataFrame([dict(metric=k,baseline=baseline.get(k),filtered=metrics.get(k)) for k in fields])
