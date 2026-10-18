@@ -48,7 +48,7 @@ Every study saves a fixed baseline without indicator filters, time gate, ranking
 Streamlit + Plotly use a dark navy institutional research theme throughout five views:
 
 1. Research Home: experiment explorer, latest run and baseline status.
-2. New Experiment: CSV source/upload, objective profile, full search configuration and start.
+2. New Experiment: CSV source/upload, 20/100/200/custom trials, explicit visual/JSON search configuration, optional objective templates and full named research profiles in Git-ignored `data/cache/profiles/`. The current default objectives remain available.
 3. Optimizer Explorer: 3D/2D Pareto, selectable axes/color, trial statuses, table/selector fallback for 3D, session shortlist.
 4. Candidate Analysis: linked Pareto candidate, baseline comparison, normalized/portfolio curves, outcomes, rejections and settings.
 5. Compare & Validation: benchmark evidence, run comparison and objective profiles.
@@ -60,3 +60,5 @@ No demo results are generated. Walk-forward/OOS validation is not implemented. S
 Responsibilities and artifact schema: [architecture](doc/architecture.md), [artifacts](doc/artifacts.md), [Pareto objectives](doc/objectives_and_pareto.md). There is one public API in `hypertrade/api.py` and no alternate historical results reader.
 
 T-194 is one AI Pipeline v8.5 task. Use the installed `~/.ai-pipeline-v85/bin/ai-pipeline`; local legacy task queues/scripts were removed. Independent checks, review of the exact Pipeline-owned commit, and Draft PR are required before delivery. Executor never commits, pushes, merges or deploys. Old queue tasks T-003/T-004 are superseded and must not run. See [pipeline](doc/ai/pipeline.md).
+
+T-197 UX changes remain **EXPERIMENTAL**: research comparisons use trade-exit calendar time by default, with a shared zero/terminal plateau and up to three candidates plus baseline. The original trade-index view remains optional; portfolio equity values and optimizer objectives are unchanged. Russian formula help, search-boundary and PRUNED diagnostics explain the saved results. See [UI guide](doc/ui_guide.md).

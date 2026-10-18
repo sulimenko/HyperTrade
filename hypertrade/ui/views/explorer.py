@@ -2,9 +2,12 @@ import pandas as pd
 import plotly.express as px
 import streamlit as st
 from hypertrade.ui.components.charts import show
-from hypertrade.ui.components.selection import candidate_key, choose_candidate, choose_shortlist
+from hypertrade.ui.components.selection import candidate_key, choose_candidate, choose_shortlist, choose_comparison
 from hypertrade.ui.state import load_run_table_safe, load_json_file
 from pathlib import Path
+from hypertrade.ui.diagnostics import show_boundaries, show_trial_diagnostics
+from hypertrade.ui.components.formula import formula_help
+from hypertrade.config.defaults import OBJECTIVE_CATALOG
 
 
 def render(run):
@@ -12,25 +15,29 @@ def render(run):
     if not run:
         st.info('Start or select an experiment.')
         return
+    formula_help()
+    show_boundaries(run)
     pareto = load_run_table_safe(run,'pareto_trials.parquet')
     trials = load_run_table_safe(run,'trials.parquet')
     status_options = trials['state'].dropna().unique().tolist() if 'state' in trials else []
     statuses = st.multiselect('Trial status', status_options, default=status_options)
     visible_trials = trials[trials['state'].isin(statuses)] if 'state' in trials else trials
     universe = st.radio('Plot', ['Pareto frontier','All completed trials'], horizontal=True)
-    frame = pareto.copy() if universe == 'Pareto frontier' else visible_trials.copy()
+    frame = pareto.copy() if universe == 'Pareto frontier' else visible_trials[visible_trials['state'].eq('COMPLETE')].copy() if 'state' in visible_trials else visible_trials.copy()
     if universe == 'Pareto frontier' and 'COMPLETE' not in statuses:
         frame = frame.iloc[:0]
-    metrics = [n for n in frame.select_dtypes('number').columns if n not in ['number','trade_count'] and not n.startswith(('params_','values_','user_attrs_'))]
+    metrics = [n for n in frame.select_dtypes('number').columns if frame[n].notna().any() and n not in ['number','trade_count'] and not n.startswith(('params_','values_','user_attrs_'))]
     if len(metrics) >= 2 and not frame.empty:
         controls = st.columns(5)
         mode = controls[0].selectbox('Dimensions',['3D','2D'])
         axes = []
+        defaults = ['portfolio_max_drawdown_pct', 'portfolio_return_pct', 'profit_factor']
+        labels = {m: f"{v['label']} · {v['unit']}" for m, v in OBJECTIVE_CATALOG.items()}
         for i,name in enumerate(['X','Y','Z'] if mode=='3D' else ['X','Y']):
-            axes.append(controls[i+1].selectbox(name,metrics,index=min(i,len(metrics)-1),key='axis_'+name))
-        color = controls[4].selectbox('Color · fourth metric',['None']+metrics,index=min(4,len(metrics)))
+            axes.append(controls[i+1].selectbox(name,metrics,index=metrics.index(defaults[i]) if defaults[i] in metrics else min(i,len(metrics)-1), key='axis_'+name, format_func=lambda m: labels.get(m, m)))
+        color = controls[4].selectbox('Color · fourth metric',['None']+metrics,index=1+metrics.index('avg_hold_minutes') if 'avg_hold_minutes' in metrics else 0, format_func=lambda m: labels.get(m, m))
         args = dict(data_frame=frame, x=axes[0],y=axes[1],color=None if color=='None' else color,
-                    custom_data=['number'],hover_data=['number'],color_continuous_scale=['#37C7F3','#9263F4'])
+                    custom_data=['number'],hover_data=['number'],color_continuous_scale=['#37C7F3','#9263F4'], labels=labels)
         if mode == '3D':
             fig = px.scatter_3d(z=axes[2], **args)
             fig.update_traces(marker_size=6)
@@ -52,6 +59,7 @@ def render(run):
         st.info('No candidates with plotted objective values for this status filter.')
     number = choose_candidate(run)
     if number is not None:
+        choose_comparison(run, pareto['number'].astype(int).tolist(), number)
         automatic = load_run_table_safe(run,'candidate_shortlist.parquet')
         choose_shortlist(run,pareto['number'].astype(int).tolist(),automatic.get('number',pd.Series(dtype=int)).astype(int).tolist())
         row = pareto[pareto['number']==number].iloc[0]
@@ -72,7 +80,9 @@ def render(run):
                 st.session_state['last_table_selection'] = token
                 st.rerun()
     with tab2:
+        show_trial_diagnostics(run, trials)
         st.dataframe(visible_trials,hide_index=True,width='stretch')
     with tab3:
+        st.caption('Сводка COMPLETE / PRUNED / FAIL и диаграмма причин — во вкладке All trials.')
         st.json(load_json_file(Path(run)/'errors.json',{}))
         st.caption('FAIL is an unexpected exception with a stack trace. PRUNED is a valid but ineligible candidate or undefined objective. A correct run may have no_valid_candidates.')

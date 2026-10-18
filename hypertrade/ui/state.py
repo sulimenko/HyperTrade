@@ -9,7 +9,8 @@ from hypertrade.experiments.artifacts import list_benchmark_suites, list_experim
 
 ARTIFACT_ROOT = Path("artifacts/experiments")
 BENCHMARK_ROOT = Path("artifacts/benchmarks")
-PROFILE_ROOT = Path('config/defaults/profiles')
+PROFILE_ROOT = Path('data/cache/profiles')
+LEGACY_PROFILE_ROOT = Path('config/defaults/profiles')
 
 DEFAULT_BENCHMARKS = {
     "PF20250597": "benchmarks/fixtures/PF20250597.csv",
