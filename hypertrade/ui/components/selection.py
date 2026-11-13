@@ -15,7 +15,7 @@ def persist_widget_value(storage_key, widget_key):
 def choose_candidate(run):
     frame = load_run_table_safe(run, 'pareto_trials.parquet')
     if frame.empty:
-        st.info('This run has no valid Pareto candidates. Inspect trial statuses and diagnostics in Optimizer Explorer.')
+        st.info('В этом исследовании нет допустимых кандидатов Парето. Проверьте статусы испытаний и диагностику в «Обзоре оптимизации».')
         return None
     numbers = frame['number'].astype(int).tolist()
     storage_key = candidate_key(run)
@@ -25,17 +25,18 @@ def choose_candidate(run):
         st.session_state[storage_key] = preferred[0] if preferred else numbers[0]
     widget_key = storage_key+'_widget'
     st.session_state[widget_key] = st.session_state[storage_key]
-    return st.selectbox('Selected candidate · linked across views', numbers, key=widget_key,
-                        format_func=lambda n: f'Trial {n}', on_change=persist_widget_value,
-                        args=(storage_key,widget_key))
+    return st.selectbox('Выбранный кандидат · общий для страниц', numbers, key=widget_key,
+                        format_func=lambda n: f'Испытание №{n}', on_change=persist_widget_value,
+                        args=(storage_key,widget_key), help='Выбор связывает обзор оптимизации и анализ кандидата. Сохраняется в этой сессии; результаты на диске не меняются.')
 
 
 def choose_shortlist(run, numbers, automatic):
     storage_key = 'shortlist_'+Path(run).name
     widget_key = storage_key+'_widget'
     st.session_state[widget_key] = st.session_state.get(storage_key,automatic)
-    st.multiselect('Research shortlist', numbers, key=widget_key, on_change=persist_widget_value,
-                   args=(storage_key,widget_key))
+    st.multiselect('Выбранные кандидаты', numbers, key=widget_key, on_change=persist_widget_value,
+                   args=(storage_key,widget_key), format_func=lambda n: f'Испытание №{n}',
+                   help='Ручной список для текущей исследовательской сессии. Не меняет сохранённый список и оптимизацию Парето.')
     if storage_key not in st.session_state:
         st.session_state[storage_key] = list(automatic)
 
@@ -59,9 +60,10 @@ def choose_comparison(run, numbers, current):
         st.session_state[storage_key] = saved
     st.session_state[storage_key+'_primary'] = current
     st.session_state[widget_key] = [n for n in saved if n in numbers][:3]
-    result = st.multiselect('Кандидаты на графике · до 3 + baseline', numbers, key=widget_key,
-                            max_selections=3, format_func=lambda n: f'Trial {n}',
-                            on_change=persist_widget_value, args=(storage_key, widget_key))
+    result = st.multiselect('Кандидаты на графике · до 3 и исходная стратегия', numbers, key=widget_key,
+                            max_selections=3, format_func=lambda n: f'Испытание №{n}',
+                            on_change=persist_widget_value, args=(storage_key, widget_key),
+                            help='Сравните до трёх кандидатов с исходной стратегией на общей оси. Выбор сохраняется при переходе между страницами.')
     if storage_key not in st.session_state:
         st.session_state[storage_key] = list(result)
     return result

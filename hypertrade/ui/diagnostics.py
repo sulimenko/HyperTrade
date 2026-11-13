@@ -8,6 +8,7 @@ import plotly.express as px
 import streamlit as st
 from hypertrade.ui.components.charts import show
 from hypertrade.ui.state import load_json_file, load_run_table_safe
+from hypertrade.ui.terms import table as show_table, display_frame, HELP
 
 
 def prune_summary(trials):
@@ -66,21 +67,24 @@ def show_boundaries(run):
     pareto = load_run_table_safe(run, 'pareto_trials.parquet')
     search = load_json_file(Path(run)/'search_space.json', {})
     table, count = boundary_summary(run, pareto, search)
-    st.caption(f'Границы поиска: {count} из {len(pareto)} Pareto-кандидатов достигли min/max хотя бы одного числового параметра (фиксированные диапазоны исключены).')
+    st.caption(f'Границы поиска: {count} из {len(pareto)} кандидатов Парето достигли минимума/максимума хотя бы одного числового параметра (фиксированные диапазоны исключены).')
     if not table.empty:
         if table['Доля_на_границе'].ge(.5).any():
             st.warning('Не менее 50% кандидатов с заданным параметром достигли его границы. Рассмотрите расширение диапазона; это не доказывает, что за границей результат лучше.')
-        with st.expander('Параметры Pareto на границах'):
-            st.dataframe(table, hide_index=True, width='stretch')
-            st.caption('Условные параметры учитываются только там, где они выбраны. Min/max берутся из сохранённых распределений Optuna; для старых bundles — из search_space.json. Фиксированные диапазоны не вызывают предупреждение.')
+        with st.expander('Параметры Парето на границах'):
+            show_table(table, hide_index=True, width='stretch')
+            st.caption('Условные параметры учитываются только там, где они выбраны. Минимум/максимум берутся из сохранённых распределений Optuna; для старых результатов — из search_space.json. Фиксированные диапазоны не вызывают предупреждение.')
     else:
         st.caption('Нет сохранённых числовых диапазонов для диагностики.')
 
 
 def show_trial_diagnostics(run, trials):
     counts, reasons = prune_summary(trials)
-    st.dataframe(counts, hide_index=True, width='stretch')
+    show_table(counts, hide_index=True, width='stretch')
     if not reasons.empty:
+        show_table(reasons, hide_index=True, width='stretch')
+        show(px.bar(display_frame(reasons), x='Испытаний', y='Причина', orientation='h', title='Причины отклонения испытаний'))
+    st.caption('Допустимые результаты: рассчитаны допустимые цели. Парето — их недоминируемое подмножество. Отклонено по ограничениям: нарушены пороги, нет сделок или не определены метрики. Ошибка расчёта: техническое исключение. Отсутствие допустимых кандидатов — корректный исследовательский результат.', help=HELP['rejections'])
+    with st.expander('Технические статусы и причины · исходные коды'):
+        st.dataframe(counts, hide_index=True, width='stretch')
         st.dataframe(reasons, hide_index=True, width='stretch')
-        show(px.bar(reasons, x='Испытаний', y='Причина', orientation='h', title='Причины PRUNED'))
-    st.caption('COMPLETE: рассчитаны допустимые цели. Pareto — недоминируемое подмножество COMPLETE. PRUNED: ограничения или неопределённые метрики; один trial может иметь несколько причин. undefined: метрика не определена; missing: нет значения для ограничения; <min / >max: нарушен порог. FAIL: техническое исключение. no_valid_candidates — корректный результат без допустимых кандидатов.')

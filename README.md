@@ -43,17 +43,21 @@ Additional indicator columns go into `data/cache/indicators`; indicators for sep
 
 Every study saves a fixed baseline without indicator filters, time gate, ranking, cap or cooldown. Its SL/TP/delay/holding settings use the configured search minima and are persisted. Candidate improvements can include both filters and exit tuning. Both models use the same costs and nominal settings. See [simulation semantics](doc/simulation.md).
 
-## Dashboard
+## Исследовательский интерфейс
 
-Streamlit + Plotly use a dark navy institutional research theme throughout five views:
+Запуск: `.venv/bin/python run_dashboard.py`. Streamlit и Plotly сохраняют тёмную тему; пять разделов по умолчанию на русском:
 
-1. Research Home: experiment explorer, latest run and baseline status.
-2. New Experiment: CSV source/upload, 20/100/200/custom trials, explicit visual/JSON search configuration, optional objective templates and full named research profiles in Git-ignored `data/cache/profiles/`. The current default objectives remain available.
-3. Optimizer Explorer: 3D/2D Pareto, selectable axes/color, trial statuses, table/selector fallback for 3D, session shortlist.
-4. Candidate Analysis: linked Pareto candidate, baseline comparison, normalized/portfolio curves, outcomes, rejections and settings.
-5. Compare & Validation: benchmark evidence, run comparison and objective profiles.
+1. **Обзор исследований** (Research Home): сохранённые исследования и статусы исходной стратегии.
+2. **Новое исследование** (New Experiment): CSV/загрузка, основные настройки по умолчанию, 20/100/200 или 1…10 000 испытаний, три профиля целей, SL/TP и EMA/RSI/ATR. Расширенная группа содержит цели/направления, ограничения, seed, издержки, ранжирование и JSON. Переключение режима сохраняет их общий профиль; окончательное резюме показывает действующие ограничения и seed.
+3. **Обзор оптимизации** (Optimizer Explorer): 3D/2D Парето, оси/цвет, статусы испытаний, выбор точкой/таблицей/списком и диагностика.
+4. **Анализ кандидата** (Candidate Analysis): исходная стратегия и до трёх кандидатов, исследовательские и портфельные кривые, сделки и причины отказов.
+5. **Сравнение и проверка** (Compare & Validation): сохранённые результаты, сопоставимость профилей и короткая проверка по одному испытанию на контрольный CSV.
 
-No demo results are generated. Walk-forward/OOS validation is not implemented. See [UI guide](doc/ui_guide.md).
+Чтобы начать, выберите CSV и профиль, задайте диапазоны, прочитайте резюме и нажмите «Запустить исследование». Подсказки у полей объясняют единицы и ограничения. Полные профили сохраняются в `data/cache/profiles/`; старые профили целей читаются без миграции исходного файла. Визуальный редактор и полный JSON выбираются явно, проверяются перед запуском и не перетирают друг друга.
+
+Краткий глоссарий: **исходная стратегия** — Baseline без фильтров, с минимальными процентными SL/TP; **испытание** — Trial Optuna; **допустимые результаты** — COMPLETE; **отклонено по ограничениям** — PRUNED; **ошибка расчёта** — FAIL. Сумма доходностей сделок измеряется в процентных пунктах, не является доходностью капитала. PF — отношение положительных доходностей к модулю отрицательных; CVaR 5% — средний убыток худших 5% сделок. Доходность портфеля — % от начального капитала, просадка — % от достигнутого пика. Комиссия — USD/акция/сторона; проскальзывание — доля цены на сторону; ATR SL/TP — множители ATR, не проценты.
+
+Изменения T-256 **ЭКСПЕРИМЕНТАЛЬНЫ** до отдельно одобренного Weekly Hardening. Это перевод отображения: исходные метрики, состояния, JSON-ключи, расчёты и прошлые результаты не меняются. Риск **lookahead** сохраняется: фильтры и ранжирование могут использовать OHLC текущей 15-минутной свечи при входе на её открытии. Проверки на будущих окнах и отложенных данных (walk-forward/OOS) нет; историческая прибыль не обещает будущих результатов. Подробности, прежние названия разделов, профили и графики — в [руководстве](doc/ui_guide.md).
 
 ## Development and delivery
 
@@ -61,4 +65,4 @@ Responsibilities and artifact schema: [architecture](doc/architecture.md), [arti
 
 T-194 is one AI Pipeline v8.5 task. Use the installed `~/.ai-pipeline-v85/bin/ai-pipeline`; local legacy task queues/scripts were removed. Independent checks, review of the exact Pipeline-owned commit, and Draft PR are required before delivery. Executor never commits, pushes, merges or deploys. Old queue tasks T-003/T-004 are superseded and must not run. See [pipeline](doc/ai/pipeline.md).
 
-T-197 UX changes remain **EXPERIMENTAL**: research comparisons use trade-exit calendar time by default, with a shared zero/terminal plateau and up to three candidates plus baseline. The original trade-index view remains optional; portfolio equity values and optimizer objectives are unchanged. Russian formula help, search-boundary and PRUNED diagnostics explain the saved results. See [UI guide](doc/ui_guide.md).
+T-197 сравнение по календарному времени закрытия с общим начальным нулём и конечным плато сохранено. Шкала по порядку сделок остаётся доступной; значения капитала, исходная стратегия и цели оптимизатора не меняются. См. [руководство](doc/ui_guide.md).
