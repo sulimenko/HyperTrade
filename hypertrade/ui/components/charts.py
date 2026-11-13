@@ -1,6 +1,7 @@
 """Consistent research-terminal chart styling."""
 import plotly.express as px
 import streamlit as st
+from hypertrade.ui.terms import LABELS, display_frame
 
 CYAN = '#37C7F3'
 VIOLET = '#9263F4'
@@ -18,4 +19,5 @@ def show(figure, **kwargs):
 
 def line(frame, x, y, title, **kwargs):
     if not frame.empty and y in frame:
-        return show(px.line(frame, x=x, y=y, title=title, **kwargs))
+        kwargs['labels'] = {**LABELS, **kwargs.get('labels', {})}
+        return show(px.line(display_frame(frame), x=x, y=y, title=title, **kwargs))
